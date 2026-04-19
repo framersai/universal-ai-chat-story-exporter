@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Character.ai Exporter by Wilds AI",
+  "version": "0.1.0",
+  "description": "Export chats from character.ai easily.",
+  "permissions": ["activeTab", "scripting", "downloads", "storage"],
+  "host_permissions": ["https://*.character.ai/*"],
+  "action": {
+    "default_popup": "src/popup/index.html"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.character.ai/*"],
+      "js": ["content.js"]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["wilds-logo.svg"],
+      "matches": ["https://*.character.ai/*"]
+    }
+  ]
+}
