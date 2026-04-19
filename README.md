@@ -35,7 +35,10 @@ A Chrome extension to export your Character.ai chat histories into clean, struct
 ## Usage
 
 1. Open a chat on [character.ai](https://character.ai).
-2. Look for the floating **Export Chat** button in the bottom-right corner.
+2. Look for the floating **Export Chat** button in the bottom-right corner:
+   
+   ![Export Chat Button](https://res.cloudinary.com/djaqusrpx/image/upload/v1776609944/Screenshot_from_2026-04-19_15-43-09_sbvfnc.png)
+
 3. Click it to extract the chat.
 4. A modal will appear showing the JSON. You can then:
    - **Copy JSON**: Copies the raw data to your clipboard.
