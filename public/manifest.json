@@ -5,8 +5,15 @@
   "description": "Export chats from character.ai easily.",
   "permissions": ["activeTab", "scripting", "downloads", "storage"],
   "host_permissions": ["https://*.character.ai/*"],
+  "icons": {
+    "16": "wilds-logo.svg",
+    "32": "wilds-logo.svg",
+    "48": "wilds-logo.svg",
+    "128": "wilds-logo.svg"
+  },
   "action": {
-    "default_popup": "src/popup/index.html"
+    "default_popup": "src/popup/index.html",
+    "default_icon": "wilds-logo.svg"
   },
   "background": {
     "service_worker": "background.js",
