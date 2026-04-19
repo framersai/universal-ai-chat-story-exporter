@@ -8,8 +8,9 @@ const LOGO_URL = chrome.runtime.getURL('wilds-logo.svg');
 
 function isChatPage() {
   const path = window.location.pathname;
-  // Common Character.ai chat URL patterns
-  return path.startsWith('/chat/') || path.includes('/chat?');
+  // Strictly match /chat/<id> where <id> is an alphanumeric string (with underscores/hyphens)
+  // This avoids matching general /chat or other non-specific pages
+  return /^\/chat\/[a-zA-Z0-9_-]+$/.test(path);
 }
 
 function extractChat() {
