@@ -1,6 +1,6 @@
 # Wilds AI: Character.ai Chat Exporter
 
-A professional Chrome extension to export your Character.ai chat histories into clean, structured JSON format. Developed by Wilds AI.
+A Chrome extension to export your Character.ai chat histories into clean, structured JSON format. Developed by Wilds AI.
 
 ![Wilds AI Logo](public/wilds-logo.svg)
 
