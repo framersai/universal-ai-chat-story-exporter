@@ -6,10 +6,10 @@
   "permissions": ["activeTab", "scripting", "downloads", "storage"],
   "host_permissions": ["https://*.character.ai/*"],
   "icons": {
-    "16": "wilds-logo.svg",
-    "32": "wilds-logo.svg",
-    "48": "wilds-logo.svg",
-    "128": "wilds-logo.svg"
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
   },
   "action": {
     "default_popup": "src/popup/index.html",
