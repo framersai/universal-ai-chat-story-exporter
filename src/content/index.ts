@@ -223,6 +223,9 @@ function showExportUI(data: any) {
 
 // Function to add a floating export button to the page
 function addFloatingButton() {
+  // Only add the button if we are on a chat page
+  if (!window.location.pathname.startsWith('/chat/')) return;
+  
   if (document.getElementById('cai-exporter-btn')) return;
 
   const btn = document.createElement('button');
@@ -274,10 +277,15 @@ function addFloatingButton() {
   document.body.appendChild(btn);
 }
 
-// Watch for the chat container to appear
+// Watch for the chat container to appear or URL changes
 const observer = new MutationObserver((mutations) => {
-  if (document.getElementById('chat-messages')) {
+  const isChatPage = window.location.pathname.startsWith('/chat/');
+  const existingBtn = document.getElementById('cai-exporter-btn');
+
+  if (isChatPage && document.getElementById('chat-messages')) {
     addFloatingButton();
+  } else if (!isChatPage && existingBtn) {
+    existingBtn.remove();
   }
 });
 
