@@ -6,6 +6,12 @@ console.log('Character.ai Exporter: Content script loaded');
 
 const LOGO_URL = chrome.runtime.getURL('wilds-logo.svg');
 
+function isChatPage() {
+  const path = window.location.pathname;
+  // Common Character.ai chat URL patterns
+  return path.startsWith('/chat/') || path.includes('/chat?');
+}
+
 function extractChat() {
   const container = document.getElementById('chat-messages');
   if (!container) {
@@ -223,9 +229,6 @@ function showExportUI(data: any) {
 
 // Function to add a floating export button to the page
 function addFloatingButton() {
-  // Only add the button if we are on a chat page
-  if (!window.location.pathname.startsWith('/chat/')) return;
-  
   if (document.getElementById('cai-exporter-btn')) return;
 
   const btn = document.createElement('button');
@@ -277,24 +280,30 @@ function addFloatingButton() {
   document.body.appendChild(btn);
 }
 
-// Watch for the chat container to appear or URL changes
-const observer = new MutationObserver((mutations) => {
-  const isChatPage = window.location.pathname.startsWith('/chat/');
+function handleUIVisibility() {
+  const isChat = isChatPage();
+  const hasMessages = !!document.getElementById('chat-messages');
   const existingBtn = document.getElementById('cai-exporter-btn');
 
-  if (isChatPage && document.getElementById('chat-messages')) {
+  if (isChat && hasMessages) {
     addFloatingButton();
-  } else if (!isChatPage && existingBtn) {
+  } else if (existingBtn) {
     existingBtn.remove();
   }
+}
+
+// Watch for DOM changes (common in SPAs)
+const observer = new MutationObserver(() => {
+  handleUIVisibility();
 });
 
 observer.observe(document.body, { childList: true, subtree: true });
 
+// Also listen for URL changes that don't trigger a reload
+window.addEventListener('popstate', handleUIVisibility);
+
 // Initial check
-if (document.getElementById('chat-messages')) {
-  addFloatingButton();
-}
+handleUIVisibility();
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'EXPORT_CHAT') {
