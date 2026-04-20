@@ -2,9 +2,12 @@
   "manifest_version": 3,
   "name": "Character.ai Exporter by Wilds AI",
   "version": "0.1.0",
-  "description": "Export chats from character.ai easily.",
+  "description": "Export chats from character.ai and AI Dungeon easily.",
   "permissions": ["activeTab", "scripting", "downloads", "storage"],
-  "host_permissions": ["https://*.character.ai/*"],
+  "host_permissions": [
+    "https://*.character.ai/*",
+    "https://play.aidungeon.com/*"
+  ],
   "icons": {
     "16": "wilds-logo.png",
     "32": "wilds-logo.png",
@@ -21,14 +24,20 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://*.character.ai/*"],
+      "matches": [
+        "https://*.character.ai/*",
+        "https://play.aidungeon.com/*"
+      ],
       "js": ["content.js"]
     }
   ],
   "web_accessible_resources": [
     {
       "resources": ["wilds-logo.svg", "wilds-logo.png"],
-      "matches": ["https://*.character.ai/*"]
+      "matches": [
+        "https://*.character.ai/*",
+        "https://play.aidungeon.com/*"
+      ]
     }
   ]
 }

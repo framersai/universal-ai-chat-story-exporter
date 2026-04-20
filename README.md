@@ -1,15 +1,15 @@
-# Wilds AI: Character.ai Chat Exporter
+# Wilds AI: Chat Exporter
 
-A Chrome extension to export your Character.ai chat histories into clean, structured JSON format. Developed by Wilds AI.
+A professional Chrome extension to export your chat histories from **Character.ai** and **AI Dungeon** into clean, structured JSON format. Developed by Wilds AI.
 
 ![Wilds AI Logo](public/wilds-logo.svg)
 
 ## Features
 
-- **Chronological Export**: Automatically handles Character.ai's dynamic layout to ensure messages are exported in the correct order.
-- **Smart Role Detection**: Accurately distinguishes between the User and the Character.
-- **Swipe Support**: Captures the active response when multiple "swipes" are available.
-- **Modern UI**: Features a floating action button on the chat page and a sleek extension popup.
+- **Multi-Platform Support**: Works on both Character.ai and AI Dungeon.
+- **Chronological Export**: Automatically handles dynamic layouts to ensure messages are exported in the correct order.
+- **Smart Role Detection**: Accurately distinguishes between the User (You) and the AI/Story.
+- **Modern UI**: Features a floating action button on chat pages and a sleek extension popup.
 - **Instant Preview**: View your extracted JSON in a formatted modal directly on the page.
 - **One-Click Actions**: Copy to clipboard or download as a `.json` file instantly.
 
@@ -34,15 +34,13 @@ A Chrome extension to export your Character.ai chat histories into clean, struct
 
 ## Usage
 
-1. Open a chat on [character.ai](https://character.ai).
-2. Look for the floating **Export Chat** button in the bottom-right corner:
-   
-   ![Export Chat Button](https://res.cloudinary.com/djaqusrpx/image/upload/v1776609944/Screenshot_from_2026-04-19_15-43-09_sbvfnc.png)
-
-3. Click it to extract the chat.
+1. Open a chat on [character.ai](https://character.ai) or an adventure on [play.aidungeon.com](https://play.aidungeon.com).
+2. Look for the floating **Export Chat** or **Export Adventure** button in the bottom-right corner.
+3. Click it to extract the content.
 4. A modal will appear showing the JSON. You can then:
    - **Copy JSON**: Copies the raw data to your clipboard.
    - **Download JSON**: Saves the data as a timestamped file.
+
 
 ## Data Structure
 
