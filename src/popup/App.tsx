@@ -31,7 +31,7 @@ const App: React.FC = () => {
           <img src="/wilds-logo.svg" alt="Wilds AI Logo" className="main-logo" />
           <h1>Wilds AI</h1>
         </div>
-        <p className="subtitle">Character.ai Exporter</p>
+        <p className="subtitle">Universal Chat & Story Exporter</p>
       </header>
       <main>
         <p className="info-text">

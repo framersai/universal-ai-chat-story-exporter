@@ -1,7 +1,7 @@
 {
-  "name": "characterai-exporter-wilds-ai",
+  "name": "wilds-ai-universal-exporter",
   "version": "0.1.0",
-  "description": "Export chats from character.ai",
+  "description": "Wilds AI: Universal AI Chat & Story Exporter",
   "type": "module",
   "scripts": {
     "dev": "vite",

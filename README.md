@@ -1,6 +1,6 @@
-# Wilds AI: Chat Exporter
+# Wilds AI: Universal AI Chat & Story Exporter
 
-A professional Chrome extension to export your chat histories from **Character.ai** and **AI Dungeon** into clean, structured JSON format. Developed by Wilds AI.
+A professional Chrome extension to export your AI companion chats and adventure stories from **Character.ai** and **AI Dungeon** into clean, structured JSON format. Developed by Wilds AI.
 
 ![Wilds AI Logo](public/wilds-logo.svg)
 

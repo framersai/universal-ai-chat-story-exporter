@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Character.ai Exporter by Wilds AI",
+  "name": "Wilds AI: Universal AI Chat & Story Exporter",
   "version": "0.1.0",
-  "description": "Export chats from character.ai and AI Dungeon easily.",
+  "description": "Export your AI companion chats and adventure stories from multiple platforms easily.",
   "permissions": ["activeTab", "scripting", "downloads", "storage"],
   "host_permissions": [
     "https://*.character.ai/*",
