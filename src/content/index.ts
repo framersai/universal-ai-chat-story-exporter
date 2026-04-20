@@ -199,9 +199,12 @@ function showExportUI(data: any) {
 function addFloatingButton() {
   if (document.getElementById('cai-exporter-btn')) return;
 
+  const site = getSite();
+  const label = site === 'aidungeon' ? 'Export Adventure' : 'Export Chat';
+
   const btn = document.createElement('button');
   btn.id = 'cai-exporter-btn';
-  btn.innerHTML = `<img src="${LOGO_URL}" style="width: 20px; height: 20px;" /><span>Export Adventure</span>`;
+  btn.innerHTML = `<img src="${LOGO_URL}" style="width: 20px; height: 20px;" /><span>${label}</span>`;
   btn.style.cssText = `
     position: fixed; bottom: 24px; right: 24px; z-index: 9998; background: #6366f1;
     color: white; border: none; border-radius: 50px; padding: 12px 20px; cursor: pointer;
