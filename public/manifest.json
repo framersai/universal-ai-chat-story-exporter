@@ -6,6 +6,7 @@
   "permissions": ["activeTab", "downloads"],
   "host_permissions": [
     "https://*.character.ai/*",
+    "https://*.characterai.io/*",
     "https://play.aidungeon.com/*"
   ],
   "icons": {
@@ -33,7 +34,11 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["wilds-logo.svg", "wilds-logo.png"],
+      "resources": [
+        "wilds-logo.svg",
+        "wilds-logo.png",
+        "cards/*"
+      ],
       "matches": [
         "https://*.character.ai/*",
         "https://play.aidungeon.com/*"

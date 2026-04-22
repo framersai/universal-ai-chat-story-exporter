@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Character Profile Card — Wilds AI</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div class="stage">
+  <article class="card" data-card="character-profile">
+    <div class="card-bg" style="background-image: url('{{avatarUrl}}');"></div>
+    <div class="card-scrim"></div>
+
+    <header class="card-top">
+      <div class="card-badge">
+        <span class="card-badge-dot"></span>
+        <span>Character Profile</span>
+      </div>
+      <div class="card-platform">{{platform}}</div>
+    </header>
+
+    <div class="card-avatar-wrap">
+      <img class="card-avatar" src="{{avatarUrl}}" alt="{{name}}" crossorigin="anonymous" />
+    </div>
+
+    <div class="card-body">
+      <h1 class="card-name">{{name}}</h1>
+      <div class="card-creator">{{creator}}</div>
+      <p class="card-description">{{description}}</p>
+    </div>
+
+    <footer class="card-footer">
+      <div class="card-brand">
+        <span class="card-brand-mark">W</span>
+        <span class="card-brand-name">Wilds AI</span>
+      </div>
+      <div class="card-date">{{date}}</div>
+    </footer>
+  </article>
+</div>
+
+<script>
+  // Standalone preview fallback: if the template is opened directly (e.g., with
+  // live-server) any unreplaced {{tokens}} are swapped for demo values so the
+  // card still renders. When the extension loads this file it replaces the
+  // tokens before injection, so this script becomes a no-op.
+  (function () {
+    var demo = {
+      name: "Vegeta",
+      creator: "By @bignoodle",
+      description:
+        "The prince of all Saiyans. Proud, relentless, and always one step away from surpassing Kakarot.",
+      avatarUrl:
+        "https://characterai.io/i/400/static/avatars/uploaded/2023/2/1/KejXzCMNV8ZXVYBlmCR4pbbrbMc7zWfFhzIh8a_Hmg0.webp",
+      platform: "character.ai",
+      date: "Exported 2026-04-22",
+    };
+    document.documentElement.innerHTML = document.documentElement.innerHTML.replace(
+      /\{\{(\w+)\}\}/g,
+      function (_, key) {
+        return demo[key] != null ? demo[key] : "";
+      }
+    );
+  })();
+</script>
+
+</body>
+</html>

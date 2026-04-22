@@ -2,11 +2,20 @@
  * Content script for character.ai and AI Dungeon
  */
 
+import { extractCharacterMetaCharacterAI, type CharacterMeta } from './metadata';
+import {
+  CHARACTER_PROFILE_CARD,
+  buildPreviewSrcDoc,
+  buildStoryCardsZip,
+} from './story-cards';
+
 console.log('Wilds AI Exporter: Content script loaded');
 
 const LOGO_URL = chrome.runtime.getURL('wilds-logo.svg');
 
-function getSite() {
+type Site = 'character' | 'aidungeon' | null;
+
+function getSite(): Site {
   const host = window.location.hostname;
   if (host.includes('character.ai')) return 'character';
   if (host.includes('aidungeon.com')) return 'aidungeon';
@@ -16,16 +25,15 @@ function getSite() {
 function isChatPage() {
   const site = getSite();
   const path = window.location.pathname;
-  
+
   if (site === 'character') {
     return /^\/chat\/[a-zA-Z0-9_-]+$/.test(path);
   }
-  
+
   if (site === 'aidungeon') {
-    // Pattern: /adventure/:id/:slug/play
     return /^\/adventure\/[a-zA-Z0-9_-]+\/.*\/play$/.test(path);
   }
-  
+
   return false;
 }
 
@@ -37,12 +45,16 @@ function extractCharacterAI() {
   const extractedMessages = [];
 
   for (const group of messageGroups) {
-    const completedMessages = Array.from(group.querySelectorAll('[data-testid="completed-message"]'));
+    const completedMessages = Array.from(
+      group.querySelectorAll('[data-testid="completed-message"]')
+    );
     if (completedMessages.length === 0) continue;
 
-    let activeMessageEl = null;
+    let activeMessageEl: Element | null = null;
     if (completedMessages.length > 1 || group.querySelector('.swiper')) {
-      activeMessageEl = group.querySelector('.swiper-slide-active [data-testid="completed-message"]');
+      activeMessageEl = group.querySelector(
+        '.swiper-slide-active [data-testid="completed-message"]'
+      );
       if (!activeMessageEl) activeMessageEl = completedMessages[0];
     } else {
       activeMessageEl = completedMessages[0];
@@ -53,16 +65,20 @@ function extractCharacterAI() {
     if (!prose) continue;
 
     const paragraphs = Array.from(prose.querySelectorAll('p'));
-    const text = paragraphs.length > 0
-      ? paragraphs.map(p => p.textContent?.trim()).filter(t => t).join('\n')
-      : prose.textContent?.trim() || '';
+    const text =
+      paragraphs.length > 0
+        ? paragraphs
+            .map((p) => p.textContent?.trim())
+            .filter((t) => t)
+            .join('\n')
+        : prose.textContent?.trim() || '';
 
     const nameEl = group.querySelector('.text-sm');
     const name = nameEl ? nameEl.textContent?.trim() : 'Unknown';
 
     const isCharacter = !!group.querySelector('.bg-secondary');
     const isUser = !!group.querySelector('.flex-row-reverse');
-    const role = isCharacter ? 'character' : (isUser ? 'user' : 'unknown');
+    const role = isCharacter ? 'character' : isUser ? 'user' : 'unknown';
 
     extractedMessages.push({ name, role, text });
   }
@@ -74,35 +90,23 @@ function extractAIDungeon() {
   const container = document.getElementById('gameplay-output');
   if (!container) return null;
 
-  const extractedMessages = [];
-  
-  // AI Dungeon structure uses spans for story (AI) and divs for actions (User)
-  // We'll iterate through all relevant children of the gameplay output
-  const elements = Array.from(container.querySelectorAll('span[role="document"], div#transition-opacity'));
+  const extractedMessages: Array<{ name: string; role: string; text: string }> = [];
+
+  const elements = Array.from(
+    container.querySelectorAll('span[role="document"], div#transition-opacity')
+  );
 
   for (const el of elements) {
     if (el.tagName === 'SPAN' && el.getAttribute('role') === 'document') {
-      // AI / Story Section
       const text = el.textContent?.trim();
       if (text) {
-        extractedMessages.push({
-          name: 'Story/AI',
-          role: 'character',
-          text: text
-        });
+        extractedMessages.push({ name: 'Story/AI', role: 'character', text });
       }
     } else if (el.tagName === 'DIV' && el.id === 'transition-opacity') {
-      // User Action Section
       const actionTextEl = el.querySelector('#action-text');
-      if (actionTextEl) {
-        const text = actionTextEl.textContent?.trim();
-        if (text) {
-          extractedMessages.push({
-            name: 'You',
-            role: 'user',
-            text: text
-          });
-        }
+      const text = actionTextEl?.textContent?.trim();
+      if (text) {
+        extractedMessages.push({ name: 'You', role: 'user', text });
       }
     }
   }
@@ -117,7 +121,31 @@ function extractChat() {
   return null;
 }
 
-function showExportUI(data: any) {
+function triggerBlobDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function sanitize(name: string) {
+  return (name || 'export').replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 40) || 'export';
+}
+
+interface ExportPayload {
+  title: string;
+  timestamp: string;
+  url: string;
+  site: Site;
+  messages: Array<{ name?: string; role: string; text: string }>;
+  characterMeta: CharacterMeta | null;
+}
+
+function showExportUI(data: ExportPayload) {
   if (document.getElementById('cai-exporter-modal')) return;
 
   const overlay = document.createElement('div');
@@ -128,72 +156,217 @@ function showExportUI(data: any) {
   modal.id = 'cai-exporter-modal';
   modal.style.cssText = `
     position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    width: 90%; max-width: 600px; max-height: 85vh; background: white; border-radius: 12px;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.2); z-index: 100000; display: flex;
-    flex-direction: column; padding: 24px; font-family: sans-serif; color: #111827;
+    width: 92%; max-width: 760px; max-height: 90vh; background: white; border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.25); z-index: 100000; display: flex;
+    flex-direction: column; padding: 22px; font-family: sans-serif; color: #111827;
+    overflow: hidden;
   `;
 
   const header = document.createElement('div');
-  header.style.cssText = `display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;`;
+  header.style.cssText = `display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;`;
   header.innerHTML = `
     <div style="display: flex; align-items: center; gap: 12px;">
       <img src="${LOGO_URL}" style="width: 32px; height: 32px;" />
       <div>
-        <h2 style="margin:0; font-size: 1.5rem; font-weight: 700; color: #6366f1;">Chat Extracted</h2>
-        <p style="margin: 4px 0 0; font-size: 0.875rem; color: #6b7280;">${data.messages.length} messages found</p>
+        <h2 style="margin:0; font-size: 1.35rem; font-weight: 700; color: #6366f1;">Export ${
+          data.site === 'aidungeon' ? 'Adventure' : 'Chat'
+        }</h2>
+        <p style="margin: 4px 0 0; font-size: 0.85rem; color: #6b7280;">
+          ${data.messages.length} messages${
+    data.characterMeta ? ` · ${data.characterMeta.name}` : ''
+  }
+        </p>
       </div>
     </div>
   `;
-  
   const closeBtn = document.createElement('button');
   closeBtn.innerHTML = '&times;';
   closeBtn.style.cssText = `border: none; background: none; font-size: 2rem; cursor: pointer; color: #9ca3af; line-height: 1; padding: 0;`;
-  
-  const closeModal = () => { modal.remove(); overlay.remove(); };
+  const closeModal = () => {
+    modal.remove();
+    overlay.remove();
+  };
   closeBtn.onclick = closeModal;
   overlay.onclick = closeModal;
   header.appendChild(closeBtn);
   modal.appendChild(header);
 
+  // Tab bar
+  const tabs = document.createElement('div');
+  tabs.style.cssText = `display: flex; gap: 6px; border-bottom: 1px solid #e5e7eb; margin-bottom: 14px;`;
+  const tabJson = document.createElement('button');
+  const tabCards = document.createElement('button');
+  const tabStyle = `
+    background: none; border: none; padding: 10px 14px; cursor: pointer;
+    font-size: 0.95rem; font-weight: 600; color: #6b7280; border-bottom: 2px solid transparent;
+  `;
+  tabJson.textContent = 'JSON';
+  tabCards.textContent = 'Story Cards';
+  tabJson.style.cssText = tabStyle;
+  tabCards.style.cssText = tabStyle;
+  tabs.appendChild(tabJson);
+  tabs.appendChild(tabCards);
+  modal.appendChild(tabs);
+
+  const content = document.createElement('div');
+  content.style.cssText = `flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;`;
+  modal.appendChild(content);
+
+  const setActiveTab = (which: 'json' | 'cards') => {
+    [tabJson, tabCards].forEach((t) => {
+      t.style.color = '#6b7280';
+      t.style.borderBottomColor = 'transparent';
+    });
+    const active = which === 'json' ? tabJson : tabCards;
+    active.style.color = '#6366f1';
+    active.style.borderBottomColor = '#6366f1';
+    content.innerHTML = '';
+    if (which === 'json') content.appendChild(renderJsonPane(data));
+    else content.appendChild(renderCardsPane(data));
+  };
+
+  tabJson.onclick = () => setActiveTab('json');
+  tabCards.onclick = () => setActiveTab('cards');
+  // Default tab depends on whether we have character metadata to show.
+  setActiveTab(data.characterMeta ? 'cards' : 'json');
+
+  document.body.appendChild(overlay);
+  document.body.appendChild(modal);
+}
+
+function renderJsonPane(data: ExportPayload) {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = `display: flex; flex-direction: column; min-height: 0; flex: 1;`;
+
   const pre = document.createElement('pre');
   pre.style.cssText = `
-    background: #f9fafb; padding: 16px; border-radius: 8px; overflow: auto; flex-grow: 1;
-    font-size: 0.875rem; border: 1px solid #e5e7eb; margin-bottom: 20px; white-space: pre-wrap;
-    word-break: break-all; font-family: monospace;
+    background: #f9fafb; padding: 14px; border-radius: 8px; overflow: auto; flex: 1;
+    font-size: 0.8rem; border: 1px solid #e5e7eb; margin: 0 0 14px; white-space: pre-wrap;
+    word-break: break-all; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    max-height: 50vh;
   `;
   pre.textContent = JSON.stringify(data, null, 2);
-  modal.appendChild(pre);
+  wrap.appendChild(pre);
 
   const footer = document.createElement('div');
-  footer.style.cssText = `display: flex; gap: 12px; justify-content: flex-end;`;
+  footer.style.cssText = `display: flex; gap: 10px; justify-content: flex-end;`;
 
   const copyBtn = document.createElement('button');
   copyBtn.textContent = 'Copy JSON';
-  copyBtn.style.cssText = `padding: 10px 18px; background: #6366f1; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;`;
+  copyBtn.style.cssText = primaryBtnStyle('#6366f1');
   copyBtn.onclick = () => {
     navigator.clipboard.writeText(JSON.stringify(data, null, 2));
     copyBtn.textContent = 'Copied!';
-    setTimeout(() => copyBtn.textContent = 'Copy JSON', 2000);
+    setTimeout(() => (copyBtn.textContent = 'Copy JSON'), 2000);
   };
 
   const downloadBtn = document.createElement('button');
   downloadBtn.textContent = 'Download JSON';
-  downloadBtn.style.cssText = `padding: 10px 18px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;`;
+  downloadBtn.style.cssText = primaryBtnStyle('#10b981');
   downloadBtn.onclick = () => {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${getSite()}-export-${new Date().getTime()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: 'application/json',
+    });
+    const slug = sanitize(data.characterMeta?.name || data.title);
+    triggerBlobDownload(blob, `${getSite()}-${slug}-${Date.now()}.json`);
   };
 
   footer.appendChild(copyBtn);
   footer.appendChild(downloadBtn);
-  modal.appendChild(footer);
-  document.body.appendChild(overlay);
-  document.body.appendChild(modal);
+  wrap.appendChild(footer);
+  return wrap;
+}
+
+function renderCardsPane(data: ExportPayload) {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = `display: flex; flex-direction: column; min-height: 0; flex: 1;`;
+
+  if (!data.characterMeta) {
+    const msg = document.createElement('p');
+    msg.style.cssText = `padding: 24px; color: #6b7280; text-align: center;`;
+    msg.textContent =
+      'Story cards are only available on character.ai chats right now.';
+    wrap.appendChild(msg);
+    return wrap;
+  }
+
+  const header = document.createElement('div');
+  header.style.cssText = `margin-bottom: 10px; font-size: 0.85rem; color: #6b7280;`;
+  header.textContent = `Preview of what's in your zip. 1 card for now — more coming soon.`;
+  wrap.appendChild(header);
+
+  const previewShell = document.createElement('div');
+  previewShell.style.cssText = `
+    flex: 1; min-height: 320px; max-height: 55vh; overflow: auto; border: 1px solid #e5e7eb;
+    border-radius: 10px; background: #0b1020; display: flex; justify-content: center;
+    padding: 16px;
+  `;
+
+  const preview = document.createElement('iframe');
+  // Scale the 720x1000 card down so it fits the modal without horizontal scroll.
+  const CARD_W = CHARACTER_PROFILE_CARD.width;
+  const CARD_H = CHARACTER_PROFILE_CARD.height;
+  const targetW = 320;
+  const scale = targetW / CARD_W;
+  preview.style.cssText = `
+    width: ${CARD_W}px; height: ${CARD_H}px; border: 0;
+    transform: scale(${scale}); transform-origin: top center;
+    margin-bottom: ${-(CARD_H - CARD_H * scale)}px;
+    background: transparent;
+  `;
+  previewShell.appendChild(preview);
+  wrap.appendChild(previewShell);
+
+  const footer = document.createElement('div');
+  footer.style.cssText = `display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; align-items: center;`;
+
+  const status = document.createElement('span');
+  status.style.cssText = `font-size: 0.8rem; color: #6b7280; margin-right: auto;`;
+  footer.appendChild(status);
+
+  const downloadZipBtn = document.createElement('button');
+  downloadZipBtn.textContent = 'Download Story Cards (ZIP)';
+  downloadZipBtn.style.cssText = primaryBtnStyle('#6366f1');
+  downloadZipBtn.onclick = async () => {
+    if (!data.characterMeta) return;
+    const original = downloadZipBtn.textContent;
+    downloadZipBtn.disabled = true;
+    downloadZipBtn.style.opacity = '0.7';
+    downloadZipBtn.textContent = 'Rendering…';
+    status.textContent = 'Rendering card images…';
+    try {
+      const zip = await buildStoryCardsZip(data.characterMeta);
+      const slug = sanitize(data.characterMeta.name);
+      triggerBlobDownload(zip, `wilds-${slug}-story-cards.zip`);
+      status.textContent = 'Downloaded.';
+    } catch (err) {
+      console.error('Story card export failed', err);
+      status.textContent = 'Export failed — check console.';
+    } finally {
+      downloadZipBtn.disabled = false;
+      downloadZipBtn.style.opacity = '1';
+      downloadZipBtn.textContent = original!;
+    }
+  };
+  footer.appendChild(downloadZipBtn);
+  wrap.appendChild(footer);
+
+  // Kick off the preview render asynchronously.
+  buildPreviewSrcDoc(data.characterMeta!)
+    .then((html) => {
+      preview.srcdoc = html;
+    })
+    .catch((err) => {
+      console.error('preview failed', err);
+      status.textContent = 'Preview failed — you can still download.';
+    });
+
+  return wrap;
+}
+
+function primaryBtnStyle(color: string) {
+  return `padding: 10px 16px; background: ${color}; color: white; border: none;
+          border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.9rem;`;
 }
 
 function addFloatingButton() {
@@ -211,28 +384,34 @@ function addFloatingButton() {
     box-shadow: 0 4px 12px rgba(0,0,0,0.15); font-weight: 600; display: flex;
     align-items: center; gap: 8px; font-family: sans-serif; transition: transform 0.2s;
   `;
-  btn.onmouseover = () => btn.style.transform = 'scale(1.05)';
-  btn.onmouseout = () => btn.style.transform = 'scale(1)';
+  btn.onmouseover = () => (btn.style.transform = 'scale(1.05)');
+  btn.onmouseout = () => (btn.style.transform = 'scale(1)');
   btn.onclick = () => {
     const messages = extractChat();
-    if (messages && messages.length > 0) {
-      showExportUI({
-        title: document.title,
-        timestamp: new Date().toISOString(),
-        url: window.location.href,
-        site: getSite(),
-        messages: messages
-      });
-    } else {
+    if (!messages || messages.length === 0) {
       alert('No messages found to export.');
+      return;
     }
+    const characterMeta =
+      getSite() === 'character' ? extractCharacterMetaCharacterAI() : null;
+    showExportUI({
+      title: document.title,
+      timestamp: new Date().toISOString(),
+      url: window.location.href,
+      site: getSite(),
+      messages,
+      characterMeta,
+    });
   };
   document.body.appendChild(btn);
 }
 
 function handleUIVisibility() {
   const isChat = isChatPage();
-  const hasMessages = !!(document.getElementById('chat-messages') || document.getElementById('gameplay-output'));
+  const hasMessages = !!(
+    document.getElementById('chat-messages') ||
+    document.getElementById('gameplay-output')
+  );
   const existingBtn = document.getElementById('cai-exporter-btn');
 
   if (isChat && hasMessages) {
@@ -247,19 +426,22 @@ observer.observe(document.body, { childList: true, subtree: true });
 window.addEventListener('popstate', handleUIVisibility);
 handleUIVisibility();
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   if (request.action === 'EXPORT_CHAT') {
     const messages = extractChat();
     if (!messages || messages.length === 0) {
       sendResponse({ success: false, error: 'No messages found.' });
       return;
     }
-    const data = {
+    const characterMeta =
+      getSite() === 'character' ? extractCharacterMetaCharacterAI() : null;
+    const data: ExportPayload = {
       title: document.title,
       timestamp: new Date().toISOString(),
       url: window.location.href,
       site: getSite(),
-      messages: messages
+      messages,
+      characterMeta,
     };
     sendResponse({ success: true, data });
     showExportUI(data);

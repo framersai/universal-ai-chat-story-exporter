@@ -3,32 +3,46 @@
  */
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('Character.ai Exporter: Extension installed');
+  console.log('Wilds AI Exporter: Extension installed');
 });
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'DOWNLOAD_DATA') {
-    const { data, filename } = request;
-    
-    // Convert data to a Blob URL
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    
-    // In Manifest V3 background workers, we can't use window.URL.createObjectURL directly.
-    // However, we can use the downloads API if we have the permission.
-    
-    // For large data, we might need a different approach, but for a boilerplate,
-    // we'll use a data URL for simplicity if it's small, or just initiate download.
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      chrome.downloads.download({
-        url: dataUrl,
-        filename: filename,
-        saveAs: true
-      });
-    };
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(blob);
-    
-    sendResponse({ success: true });
+  });
+}
+
+async function fetchImageAsDataUrl(url: string): Promise<string> {
+  const res = await fetch(url, { credentials: 'omit' });
+  if (!res.ok) throw new Error(`fetch ${url} -> ${res.status}`);
+  const blob = await res.blob();
+  return blobToDataUrl(blob);
+}
+
+chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+  if (request?.action === 'FETCH_IMAGE' && typeof request.url === 'string') {
+    fetchImageAsDataUrl(request.url)
+      .then((dataUrl) => sendResponse({ success: true, dataUrl }))
+      .catch((err) =>
+        sendResponse({ success: false, error: String(err?.message || err) })
+      );
+    return true; // async response
   }
+
+  if (request?.action === 'DOWNLOAD_DATA') {
+    const { data, filename } = request as { data: unknown; filename: string };
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: 'application/json',
+    });
+    blobToDataUrl(blob).then((dataUrl) => {
+      chrome.downloads.download({ url: dataUrl, filename, saveAs: true });
+      sendResponse({ success: true });
+    });
+    return true;
+  }
+
+  return false;
 });
