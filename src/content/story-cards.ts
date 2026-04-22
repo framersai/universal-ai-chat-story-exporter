@@ -26,6 +26,21 @@ export const CHARACTER_PROFILE_CARD: CardDef = {
   fileName: '01-character-profile.png',
 };
 
+export const CHAT_MESSAGE_CARD: CardDef = {
+  name: 'chat-message',
+  width: 720,
+  height: 1000,
+  fileName: 'chat-message.png',
+};
+
+export interface ChatMessage {
+  name?: string;
+  role: string; // 'user' | 'character' | 'unknown'
+  text: string;
+}
+
+const MAX_MESSAGE_CHARS = 420;
+
 function replaceTokens(template: string, data: Record<string, string>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => {
     const v = data[key];
@@ -194,32 +209,144 @@ export async function renderCardToBlob(
   }
 }
 
-export async function buildStoryCardsZip(meta: CharacterMeta): Promise<Blob> {
-  const avatarDataUrl = await fetchImageAsDataUrl(meta.avatarUrl);
-  const resolvedAvatar = avatarDataUrl || meta.avatarUrl;
+// --- Chat message card helpers ---------------------------------------------
 
-  const data: Record<string, string> = {
-    name: meta.name,
-    creator: meta.creator,
-    description:
-      meta.description ||
-      `An AI companion from ${meta.platform}. Exported with Wilds AI.`,
-    avatarUrl: resolvedAvatar,
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function truncate(s: string, max = MAX_MESSAGE_CHARS): string {
+  if (!s) return '';
+  const trimmed = s.trim();
+  return trimmed.length > max ? trimmed.slice(0, max - 1).trimEnd() + '…' : trimmed;
+}
+
+/** Render one message as the bubble HTML consumed by the chat-message card. */
+function messageBubbleHtml(msg: ChatMessage, defaultCharacterName: string): string {
+  const role = msg.role === 'user' ? 'user' : 'character';
+  const displayName =
+    role === 'user'
+      ? msg.name && msg.name !== 'You'
+        ? msg.name
+        : 'You'
+      : msg.name || defaultCharacterName || 'Character';
+  const text = truncate(msg.text);
+  return `<div class="msg msg-${role}"><div class="msg-bubble"><div class="msg-head">${escapeHtml(
+    displayName
+  )}</div><div class="msg-text">${escapeHtml(text)}</div></div></div>`;
+}
+
+/** Group the extracted messages into sequential pairs (2 per card). */
+export function pairMessages(
+  messages: ChatMessage[]
+): Array<{ first: ChatMessage; second: ChatMessage | null }> {
+  const pairs: Array<{ first: ChatMessage; second: ChatMessage | null }> = [];
+  for (let i = 0; i < messages.length; i += 2) {
+    pairs.push({ first: messages[i], second: messages[i + 1] ?? null });
+  }
+  return pairs;
+}
+
+interface ChatCardTokenData extends Record<string, string> {
+  characterName: string;
+  characterAvatar: string;
+  platform: string;
+  cardIndex: string;
+  messagesHtml: string;
+  date: string;
+}
+
+function buildChatCardTokens(params: {
+  meta: CharacterMeta;
+  avatarDataUrl: string;
+  date: string;
+  pair: { first: ChatMessage; second: ChatMessage | null };
+  index: number; // 1-based
+  total: number;
+}): ChatCardTokenData {
+  const { meta, avatarDataUrl, date, pair, index, total } = params;
+  const first = messageBubbleHtml(pair.first, meta.name);
+  const second = pair.second ? messageBubbleHtml(pair.second, meta.name) : '';
+  return {
+    characterName: meta.name || 'Character',
+    characterAvatar: avatarDataUrl || meta.avatarUrl || '',
     platform: meta.platform,
-    date: `Exported ${new Date().toISOString().slice(0, 10)}`,
+    cardIndex: `Part ${index} of ${total}`,
+    messagesHtml: first + second,
+    date,
   };
+}
 
-  const profileBlob = await renderCardToBlob(CHARACTER_PROFILE_CARD, data);
+// --- Zip packaging ---------------------------------------------------------
+
+const PROFILE_TOKENS = (meta: CharacterMeta, avatarDataUrl: string, date: string) => ({
+  name: meta.name,
+  creator: meta.creator,
+  description:
+    meta.description ||
+    `An AI companion from ${meta.platform}. Exported with Wilds AI.`,
+  avatarUrl: avatarDataUrl || meta.avatarUrl,
+  platform: meta.platform,
+  date,
+});
+
+function pad2(n: number) {
+  return String(n).padStart(2, '0');
+}
+
+export async function buildStoryCardsZip(
+  meta: CharacterMeta,
+  messages: ChatMessage[],
+  onProgress?: (done: number, total: number) => void
+): Promise<Blob> {
+  const avatarDataUrl = await fetchImageAsDataUrl(meta.avatarUrl);
+  const dateStr = `Exported ${new Date().toISOString().slice(0, 10)}`;
+
+  const pairs = pairMessages(messages);
+  const totalCards = 1 + pairs.length; // profile + chat pairs
+  let done = 0;
+  const progress = () => onProgress?.(++done, totalCards);
+
+  const profileBlob = await renderCardToBlob(
+    CHARACTER_PROFILE_CARD,
+    PROFILE_TOKENS(meta, avatarDataUrl, dateStr)
+  );
+  progress();
+
+  const chatBlobs: Array<{ name: string; blob: Blob }> = [];
+  for (let i = 0; i < pairs.length; i++) {
+    const tokens = buildChatCardTokens({
+      meta,
+      avatarDataUrl,
+      date: dateStr,
+      pair: pairs[i],
+      index: i + 1,
+      total: pairs.length,
+    });
+    const blob = await renderCardToBlob(CHAT_MESSAGE_CARD, tokens);
+    chatBlobs.push({ name: `${pad2(i + 2)}-chat-${pad2(i + 1)}.png`, blob });
+    progress();
+  }
 
   const zip = new JSZip();
   zip.file(CHARACTER_PROFILE_CARD.fileName, profileBlob);
+  for (const { name, blob } of chatBlobs) zip.file(name, blob);
   zip.file(
     'metadata.json',
     JSON.stringify(
       {
         character: meta,
         generatedAt: new Date().toISOString(),
-        cards: [CHARACTER_PROFILE_CARD.fileName],
+        cards: [
+          CHARACTER_PROFILE_CARD.fileName,
+          ...chatBlobs.map((c) => c.name),
+        ],
+        messageCount: messages.length,
       },
       null,
       2
@@ -228,18 +355,40 @@ export async function buildStoryCardsZip(meta: CharacterMeta): Promise<Blob> {
   return zip.generateAsync({ type: 'blob' });
 }
 
-/** A lightweight HTML preview (no rasterization) for the export modal. */
-export async function buildPreviewSrcDoc(meta: CharacterMeta): Promise<string> {
+// --- Previews --------------------------------------------------------------
+
+/** HTML for the character profile card — used in the modal preview. */
+export async function buildProfilePreviewSrcDoc(meta: CharacterMeta): Promise<string> {
   const avatarDataUrl = await fetchImageAsDataUrl(meta.avatarUrl);
-  const data: Record<string, string> = {
-    name: meta.name,
-    creator: meta.creator,
-    description:
-      meta.description ||
-      `An AI companion from ${meta.platform}. Exported with Wilds AI.`,
-    avatarUrl: avatarDataUrl || meta.avatarUrl,
-    platform: meta.platform,
+  return loadPopulatedTemplate(
+    CHARACTER_PROFILE_CARD,
+    PROFILE_TOKENS(
+      meta,
+      avatarDataUrl,
+      `Exported ${new Date().toISOString().slice(0, 10)}`
+    )
+  );
+}
+
+/** HTML for the first chat-message card — used in the modal preview. */
+export async function buildChatPreviewSrcDoc(
+  meta: CharacterMeta,
+  messages: ChatMessage[]
+): Promise<string | null> {
+  const pairs = pairMessages(messages);
+  if (pairs.length === 0) return null;
+  const avatarDataUrl = await fetchImageAsDataUrl(meta.avatarUrl);
+  const tokens = buildChatCardTokens({
+    meta,
+    avatarDataUrl,
     date: `Exported ${new Date().toISOString().slice(0, 10)}`,
-  };
-  return loadPopulatedTemplate(CHARACTER_PROFILE_CARD, data);
+    pair: pairs[0],
+    index: 1,
+    total: pairs.length,
+  });
+  return loadPopulatedTemplate(CHAT_MESSAGE_CARD, tokens);
+}
+
+export function countCards(messages: ChatMessage[]): number {
+  return 1 + pairMessages(messages).length;
 }

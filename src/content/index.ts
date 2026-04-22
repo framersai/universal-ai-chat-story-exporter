@@ -5,8 +5,11 @@
 import { extractCharacterMetaCharacterAI, type CharacterMeta } from './metadata';
 import {
   CHARACTER_PROFILE_CARD,
-  buildPreviewSrcDoc,
+  buildChatPreviewSrcDoc,
+  buildProfilePreviewSrcDoc,
   buildStoryCardsZip,
+  countCards,
+  type ChatMessage,
 } from './story-cards';
 
 console.log('Wilds AI Exporter: Content script loaded');
@@ -290,31 +293,43 @@ function renderCardsPane(data: ExportPayload) {
     return wrap;
   }
 
+  const totalCards = countCards(data.messages as ChatMessage[]);
+
   const header = document.createElement('div');
   header.style.cssText = `margin-bottom: 10px; font-size: 0.85rem; color: #6b7280;`;
-  header.textContent = `Preview of what's in your zip. 1 card for now — more coming soon.`;
+  header.textContent = `${totalCards} cards — profile + ${
+    totalCards - 1
+  } chat ${totalCards - 1 === 1 ? 'card' : 'cards'} (2 messages each).`;
   wrap.appendChild(header);
 
   const previewShell = document.createElement('div');
   previewShell.style.cssText = `
     flex: 1; min-height: 320px; max-height: 55vh; overflow: auto; border: 1px solid #e5e7eb;
     border-radius: 10px; background: #0b1020; display: flex; justify-content: center;
-    padding: 16px;
+    gap: 20px; padding: 16px;
   `;
 
-  const preview = document.createElement('iframe');
-  // Scale the 720x1000 card down so it fits the modal without horizontal scroll.
   const CARD_W = CHARACTER_PROFILE_CARD.width;
   const CARD_H = CHARACTER_PROFILE_CARD.height;
-  const targetW = 320;
+  const targetW = 300;
   const scale = targetW / CARD_W;
-  preview.style.cssText = `
-    width: ${CARD_W}px; height: ${CARD_H}px; border: 0;
-    transform: scale(${scale}); transform-origin: top center;
-    margin-bottom: ${-(CARD_H - CARD_H * scale)}px;
-    background: transparent;
-  `;
-  previewShell.appendChild(preview);
+
+  const makePreviewIframe = () => {
+    const f = document.createElement('iframe');
+    f.style.cssText = `
+      width: ${CARD_W}px; height: ${CARD_H}px; border: 0;
+      transform: scale(${scale}); transform-origin: top left;
+      margin-right: ${-(CARD_W - CARD_W * scale)}px;
+      margin-bottom: ${-(CARD_H - CARD_H * scale)}px;
+      background: transparent;
+    `;
+    return f;
+  };
+
+  const profileFrame = makePreviewIframe();
+  const chatFrame = makePreviewIframe();
+  previewShell.appendChild(profileFrame);
+  previewShell.appendChild(chatFrame);
   wrap.appendChild(previewShell);
 
   const footer = document.createElement('div');
@@ -332,10 +347,15 @@ function renderCardsPane(data: ExportPayload) {
     const original = downloadZipBtn.textContent;
     downloadZipBtn.disabled = true;
     downloadZipBtn.style.opacity = '0.7';
-    downloadZipBtn.textContent = 'Rendering…';
-    status.textContent = 'Rendering card images…';
     try {
-      const zip = await buildStoryCardsZip(data.characterMeta);
+      const zip = await buildStoryCardsZip(
+        data.characterMeta,
+        data.messages as ChatMessage[],
+        (done, total) => {
+          downloadZipBtn.textContent = `Rendering ${done}/${total}…`;
+          status.textContent = `Rendering card ${done} of ${total}…`;
+        }
+      );
       const slug = sanitize(data.characterMeta.name);
       triggerBlobDownload(zip, `wilds-${slug}-story-cards.zip`);
       status.textContent = 'Downloaded.';
@@ -351,14 +371,24 @@ function renderCardsPane(data: ExportPayload) {
   footer.appendChild(downloadZipBtn);
   wrap.appendChild(footer);
 
-  // Kick off the preview render asynchronously.
-  buildPreviewSrcDoc(data.characterMeta!)
+  // Kick off preview renders in parallel.
+  buildProfilePreviewSrcDoc(data.characterMeta!)
     .then((html) => {
-      preview.srcdoc = html;
+      profileFrame.srcdoc = html;
+    })
+    .catch((err) => console.error('profile preview failed', err));
+
+  buildChatPreviewSrcDoc(
+    data.characterMeta!,
+    data.messages as ChatMessage[]
+  )
+    .then((html) => {
+      if (html) chatFrame.srcdoc = html;
+      else chatFrame.remove();
     })
     .catch((err) => {
-      console.error('preview failed', err);
-      status.textContent = 'Preview failed — you can still download.';
+      console.error('chat preview failed', err);
+      chatFrame.remove();
     });
 
   return wrap;

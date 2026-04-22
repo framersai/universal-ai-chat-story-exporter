@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Chat Message Card — Wilds AI</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div class="stage">
+  <article class="card" data-card="chat-message">
+    <div class="card-bg" style="background-image: url('{{characterAvatar}}');"></div>
+    <div class="card-scrim"></div>
+
+    <header class="card-top">
+      <div class="card-meta">
+        <img
+          class="card-meta-avatar"
+          src="{{characterAvatar}}"
+          alt="{{characterName}}"
+          crossorigin="anonymous"
+        />
+        <div class="card-meta-text">
+          <div class="card-meta-name">{{characterName}}</div>
+          <div class="card-meta-sub">{{platform}}</div>
+        </div>
+      </div>
+      <div class="card-index">{{cardIndex}}</div>
+    </header>
+
+    <div class="card-messages">
+      {{messagesHtml}}
+    </div>
+
+    <footer class="card-footer">
+      <div class="card-brand">
+        <span class="card-brand-mark">W</span>
+        <span class="card-brand-name">Wilds AI</span>
+      </div>
+      <div class="card-date">{{date}}</div>
+    </footer>
+  </article>
+</div>
+
+<script>
+  // Standalone preview fallback: when opened directly (e.g., with live-server)
+  // any unreplaced {{tokens}} are swapped for demo values so the card still
+  // renders. The extension pre-fills these before injection so this becomes
+  // a no-op at export time.
+  (function () {
+    var demo = {
+      characterName: "Vegeta",
+      characterAvatar:
+        "https://characterai.io/i/400/static/avatars/uploaded/2023/2/1/KejXzCMNV8ZXVYBlmCR4pbbrbMc7zWfFhzIh8a_Hmg0.webp",
+      platform: "character.ai",
+      cardIndex: "Part 1 of 8",
+      date: "Exported 2026-04-22",
+      messagesHtml: [
+        '<div class="msg msg-user"><div class="msg-bubble">',
+        '<div class="msg-head">You</div>',
+        '<div class="msg-text">Hey Vegeta, how do you feel about training today?</div>',
+        "</div></div>",
+        '<div class="msg msg-character"><div class="msg-bubble">',
+        '<div class="msg-head">Vegeta</div>',
+        "<div class=\"msg-text\">Tch. What do you think, human? I'll train until my body gives out. Anything less would be an insult to my bloodline.</div>",
+        "</div></div>",
+      ].join(""),
+    };
+    document.documentElement.innerHTML = document.documentElement.innerHTML.replace(
+      /\{\{(\w+)\}\}/g,
+      function (_, key) {
+        return demo[key] != null ? demo[key] : "";
+      }
+    );
+  })();
+</script>
+
+</body>
+</html>
