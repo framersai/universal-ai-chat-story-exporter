@@ -3,7 +3,7 @@
   "name": "Wilds AI: Universal AI Chat & Story Exporter",
   "version": "0.1.0",
   "description": "Export your AI companion chats and adventure stories from multiple platforms easily.",
-  "permissions": ["activeTab", "scripting", "downloads", "storage"],
+  "permissions": ["activeTab", "downloads"],
   "host_permissions": [
     "https://*.character.ai/*",
     "https://play.aidungeon.com/*"
