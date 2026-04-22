@@ -190,6 +190,8 @@ body {
   -webkit-line-clamp: 4;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  letter-spacing: 0;
+  word-spacing: 0;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
 }
 

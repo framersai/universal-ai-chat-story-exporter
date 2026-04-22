@@ -187,6 +187,10 @@ export async function renderCardToBlob(
       useCORS: true,
       allowTaint: false,
       backgroundColor: null,
+      // Render text via the browser's own <foreignObject> path so word
+      // spacing and kerning match the live preview instead of html2canvas's
+      // manual text layout (which drops spaces at wrap boundaries).
+      foreignObjectRendering: true,
       width: w,
       height: h,
       windowWidth: w,
@@ -226,6 +230,14 @@ function truncate(s: string, max = MAX_MESSAGE_CHARS): string {
   return trimmed.length > max ? trimmed.slice(0, max - 1).trimEnd() + '…' : trimmed;
 }
 
+/** Escape text and convert newlines to <br> so we don't depend on CSS
+ *  white-space: pre-wrap (which triggers html2canvas word-joining bugs). */
+function escapeAndBreak(s: string): string {
+  return escapeHtml(s)
+    .split(/\r?\n/)
+    .join('<br>');
+}
+
 /** Render one message as the bubble HTML consumed by the chat-message card. */
 function messageBubbleHtml(msg: ChatMessage, defaultCharacterName: string): string {
   const role = msg.role === 'user' ? 'user' : 'character';
@@ -238,7 +250,7 @@ function messageBubbleHtml(msg: ChatMessage, defaultCharacterName: string): stri
   const text = truncate(msg.text);
   return `<div class="msg msg-${role}"><div class="msg-bubble"><div class="msg-head">${escapeHtml(
     displayName
-  )}</div><div class="msg-text">${escapeHtml(text)}</div></div></div>`;
+  )}</div><div class="msg-text">${escapeAndBreak(text)}</div></div></div>`;
 }
 
 /** Group the extracted messages into sequential pairs (2 per card). */
