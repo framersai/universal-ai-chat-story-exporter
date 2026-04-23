@@ -7,7 +7,8 @@
   "host_permissions": [
     "https://*.character.ai/*",
     "https://*.characterai.io/*",
-    "https://play.aidungeon.com/*"
+    "https://play.aidungeon.com/*",
+    "https://api.aidungeon.com/*"
   ],
   "icons": {
     "16": "wilds-logo.png",

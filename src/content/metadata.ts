@@ -17,9 +17,42 @@ export interface CharacterMeta {
   info: Record<string, unknown> | null;
 }
 
+export interface AdventureStoryCard {
+  id: string;
+  type: string;
+  title: string;
+  keys: string;
+  value: string;
+  description: string;
+}
+
 export interface AdventureMeta {
   title: string;
   platform: string; // e.g. "AI Dungeon"
+  description: string;
+  image: string; // cover image URL
+  memory: string;
+  authorsNote: string;
+  author: string; // creator username
+  authorAvatar: string;
+  characterName: string; // player's character name
+  tags: string[];
+  storyCards: AdventureStoryCard[];
+  info: Record<string, unknown> | null;
+}
+
+export interface AdventureMessage {
+  id?: string;
+  name: string;
+  role: string; // 'user' | 'character'
+  text: string;
+  type?: string; // 'start' | 'continue' | 'do' | 'say' | 'story'
+  createdAt?: string;
+}
+
+export interface AIDungeonAdventure {
+  meta: AdventureMeta;
+  messages: AdventureMessage[];
 }
 
 function safeText(el: Element | null | undefined): string {
@@ -248,10 +281,28 @@ export async function extractCharacterMetaCharacterAI(): Promise<CharacterMeta |
   };
 }
 
+function emptyAdventureMeta(title: string): AdventureMeta {
+  return {
+    title,
+    platform: 'AI Dungeon',
+    description: '',
+    image: '',
+    memory: '',
+    authorsNote: '',
+    author: '',
+    authorAvatar: '',
+    characterName: '',
+    tags: [],
+    storyCards: [],
+    info: null,
+  };
+}
+
 /**
  * AI Dungeon exposes the adventure name in document.title (typically
  * "Adventure Name - AI Dungeon"). Fall back to the URL slug so even
- * unlabeled adventures get a sensible title.
+ * unlabeled adventures get a sensible title. Used only as fallback when
+ * the GraphQL API isn't reachable (e.g. user is logged out).
  */
 export function extractAdventureMetaAIDungeon(): AdventureMeta {
   const raw = document.title || '';
@@ -267,8 +318,166 @@ export function extractAdventureMetaAIDungeon(): AdventureMeta {
     }
   }
 
+  return emptyAdventureMeta(title || 'AI Dungeon Adventure');
+}
+
+/**
+ * AI Dungeon URLs follow /adventure/:shortId/:slug/play.
+ */
+function getAIDungeonShortId(): string | null {
+  const m = window.location.pathname.match(/^\/adventure\/([^/?#]+)/);
+  return m ? m[1] : null;
+}
+
+/**
+ * The AI Dungeon web app stores its Firebase session in localStorage under
+ * `auth_state_production`. Its `accessToken` field already includes the
+ * "firebase " scheme prefix and is passed through verbatim as the
+ * Authorization header.
+ */
+function getAIDungeonAccessToken(): string | null {
+  try {
+    const raw = window.localStorage.getItem('auth_state_production');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const token = typeof parsed?.accessToken === 'string' ? parsed.accessToken : '';
+    return token || null;
+  } catch {
+    return null;
+  }
+}
+
+function fetchAdventureViaBackground(
+  shortId: string,
+  accessToken: string
+): Promise<Record<string, unknown> | null> {
+  return new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage(
+        { action: 'FETCH_AIDUNGEON_ADVENTURE', shortId, accessToken },
+        (response) => {
+          if (chrome.runtime.lastError || !response?.success) {
+            resolve(null);
+            return;
+          }
+          const adv = response.data;
+          resolve(adv && typeof adv === 'object' ? adv : null);
+        }
+      );
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+const PROMOTED_ADVENTURE_FIELDS = new Set([
+  'title',
+  'description',
+  'image',
+  'memory',
+  'authorsNote',
+  'tags',
+  'storyCards',
+  'actionWindow',
+]);
+
+function stripPromotedFromAdventure(
+  adv: Record<string, unknown> | null
+): Record<string, unknown> | null {
+  if (!adv) return null;
+  const rest: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(adv)) {
+    if (!PROMOTED_ADVENTURE_FIELDS.has(k)) rest[k] = v;
+  }
+  return rest;
+}
+
+function buildAdventureStoryCards(adv: any): AdventureStoryCard[] {
+  const cards = Array.isArray(adv?.storyCards) ? adv.storyCards : [];
+  return cards.map((c: any) => ({
+    id: toStr(c?.id),
+    type: toStr(c?.type),
+    title: toStr(c?.title),
+    keys: toStr(c?.keys),
+    value: toStr(c?.value),
+    description: toStr(c?.description),
+  }));
+}
+
+function buildAdventureMetaFromApi(adv: any): AdventureMeta {
+  const creatorUsername =
+    toStr(adv?.user?.profile?.title) ||
+    toStr(adv?.allPlayers?.[0]?.user?.username) ||
+    '';
+  const creatorAvatar =
+    toStr(adv?.user?.profile?.thumbImageUrl) ||
+    toStr(adv?.allPlayers?.[0]?.user?.profile?.thumbImageUrl);
+  const tags = Array.isArray(adv?.tags)
+    ? adv.tags.filter((t: unknown): t is string => typeof t === 'string' && t.length > 0)
+    : [];
+
   return {
-    title: title || 'AI Dungeon Adventure',
+    title: toStr(adv?.title) || 'AI Dungeon Adventure',
     platform: 'AI Dungeon',
+    description: toStr(adv?.description),
+    image: toStr(adv?.image),
+    memory: toStr(adv?.memory),
+    authorsNote: toStr(adv?.authorsNote),
+    author: creatorUsername,
+    authorAvatar: creatorAvatar,
+    characterName: toStr(adv?.allPlayers?.[0]?.characterName),
+    tags,
+    storyCards: buildAdventureStoryCards(adv),
+    info: stripPromotedFromAdventure(adv),
+  };
+}
+
+function buildAdventureMessagesFromApi(adv: any): AdventureMessage[] {
+  const actions = Array.isArray(adv?.actionWindow) ? adv.actionWindow : [];
+  const sorted = [...actions].sort((a: any, b: any) => {
+    const ai = Number(a?.id);
+    const bi = Number(b?.id);
+    if (isFinite(ai) && isFinite(bi) && ai !== bi) return ai - bi;
+    const at = String(a?.createdAt || '');
+    const bt = String(b?.createdAt || '');
+    return at.localeCompare(bt);
+  });
+
+  const out: AdventureMessage[] = [];
+  for (const a of sorted) {
+    if (a?.undoneAt || a?.deletedAt) continue;
+    const text = typeof a?.text === 'string' ? a.text : '';
+    if (!text.trim()) continue;
+    const type = toStr(a?.type);
+    const isUser = type === 'do' || type === 'say' || type === 'story';
+    out.push({
+      id: toStr(a?.id),
+      name: isUser ? 'You' : 'Story/AI',
+      role: isUser ? 'user' : 'character',
+      text,
+      type,
+      createdAt: toStr(a?.createdAt),
+    });
+  }
+  return out;
+}
+
+/**
+ * Pull the full adventure via the AI Dungeon GraphQL API. Returns null when
+ * the page URL doesn't match an adventure, when no access token is present
+ * in localStorage, or when the request fails — callers should fall back to
+ * the DOM-based extractors in that case.
+ */
+export async function extractAIDungeonAdventure(): Promise<AIDungeonAdventure | null> {
+  const shortId = getAIDungeonShortId();
+  const token = getAIDungeonAccessToken();
+  if (!shortId || !token) return null;
+
+  const adv = await fetchAdventureViaBackground(shortId, token);
+  if (!adv) return null;
+
+  return {
+    meta: buildAdventureMetaFromApi(adv),
+    messages: buildAdventureMessagesFromApi(adv),
   };
 }

@@ -3,8 +3,10 @@
  */
 
 import {
+  extractAIDungeonAdventure,
   extractAdventureMetaAIDungeon,
   extractCharacterMetaCharacterAI,
+  type AdventureMessage,
   type AdventureMeta,
   type CharacterMeta,
 } from './metadata';
@@ -126,11 +128,40 @@ function extractAIDungeon() {
   return extractedMessages;
 }
 
-function extractChat() {
+async function collectExportData(): Promise<{
+  messages: Array<{ name?: string; role: string; text: string }>;
+  characterMeta: CharacterMeta | null;
+  adventureMeta: AdventureMeta | null;
+}> {
   const site = getSite();
-  if (site === 'character') return extractCharacterAI();
-  if (site === 'aidungeon') return extractAIDungeon();
-  return null;
+
+  if (site === 'character') {
+    return {
+      messages: extractCharacterAI() || [],
+      characterMeta: await extractCharacterMetaCharacterAI(),
+      adventureMeta: null,
+    };
+  }
+
+  if (site === 'aidungeon') {
+    const api = await extractAIDungeonAdventure();
+    if (api) {
+      return {
+        messages: api.messages as AdventureMessage[],
+        characterMeta: null,
+        adventureMeta: api.meta,
+      };
+    }
+    // Fallback: DOM-based extraction when the API isn't reachable
+    // (logged out, network error, auth expired).
+    return {
+      messages: extractAIDungeon() || [],
+      characterMeta: null,
+      adventureMeta: extractAdventureMetaAIDungeon(),
+    };
+  }
+
+  return { messages: [], characterMeta: null, adventureMeta: null };
 }
 
 function triggerBlobDownload(blob: Blob, filename: string) {
@@ -511,20 +542,15 @@ function addFloatingButton() {
   btn.onmouseover = () => (btn.style.transform = 'scale(1.05)');
   btn.onmouseout = () => (btn.style.transform = 'scale(1)');
   btn.onclick = async () => {
-    const messages = extractChat();
+    const { messages, characterMeta, adventureMeta } = await collectExportData();
     if (!messages || messages.length === 0) {
       alert('No messages found to export.');
       return;
     }
-    const site = getSite();
-    const characterMeta =
-      site === 'character' ? await extractCharacterMetaCharacterAI() : null;
-    const adventureMeta =
-      site === 'aidungeon' ? extractAdventureMetaAIDungeon() : null;
     showExportUI({
       timestamp: new Date().toISOString(),
       url: window.location.href,
-      site,
+      site: getSite(),
       messages,
       characterMeta,
       adventureMeta,
@@ -556,20 +582,15 @@ handleUIVisibility();
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   if (request.action === 'EXPORT_CHAT') {
     (async () => {
-      const messages = extractChat();
+      const { messages, characterMeta, adventureMeta } = await collectExportData();
       if (!messages || messages.length === 0) {
         sendResponse({ success: false, error: 'No messages found.' });
         return;
       }
-      const site = getSite();
-      const characterMeta =
-        site === 'character' ? await extractCharacterMetaCharacterAI() : null;
-      const adventureMeta =
-        site === 'aidungeon' ? extractAdventureMetaAIDungeon() : null;
       const data: ExportPayload = {
         timestamp: new Date().toISOString(),
         url: window.location.href,
-        site,
+        site: getSite(),
         messages,
         characterMeta,
         adventureMeta,
