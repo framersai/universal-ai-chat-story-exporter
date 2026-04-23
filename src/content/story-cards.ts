@@ -10,7 +10,7 @@
 
 import html2canvas from 'html2canvas';
 import JSZip from 'jszip';
-import type { CharacterMeta } from './metadata';
+import type { AdventureMeta, CharacterMeta } from './metadata';
 
 export interface CardDef {
   name: string; // folder name under /cards
@@ -31,6 +31,13 @@ export const CHAT_MESSAGE_CARD: CardDef = {
   width: 720,
   height: 1000,
   fileName: 'chat-message.png',
+};
+
+export const ADVENTURE_STORY_CARD: CardDef = {
+  name: 'adventure-story',
+  width: 1280,
+  height: 720,
+  fileName: 'adventure-story.png',
 };
 
 export interface ChatMessage {
@@ -298,10 +305,8 @@ function buildChatCardTokens(params: {
 
 const PROFILE_TOKENS = (meta: CharacterMeta, avatarDataUrl: string, date: string) => ({
   name: meta.name,
-  creator: meta.creator,
-  description:
-    meta.description ||
-    `An AI companion from ${meta.platform}. Exported with Wilds AI.`,
+  creator: meta.creator ? `By @${meta.creator}` : '',
+  description: meta.description || '',
   avatarUrl: avatarDataUrl || meta.avatarUrl,
   platform: meta.platform,
   date,
@@ -403,4 +408,115 @@ export async function buildChatPreviewSrcDoc(
 
 export function countCards(messages: ChatMessage[]): number {
   return 1 + pairMessages(messages).length;
+}
+
+// --- Adventure story cards (AI Dungeon) -----------------------------------
+
+const ADVENTURE_MAX_USER_CHARS = 240;
+const ADVENTURE_MAX_STORY_CHARS = 900; // loose cap — CSS line-clamp trims visually
+
+/** Collapse runs of blank lines into a single paragraph break so the
+ *  landscape card doesn't waste its limited vertical space on empty rows. */
+function collapseBlankLines(s: string): string {
+  return s.replace(/(\r?\n[ \t]*){2,}/g, '\n');
+}
+
+/** Render one AI Dungeon message as an adventure-story bubble. */
+function adventureBubbleHtml(msg: ChatMessage): string {
+  const role = msg.role === 'user' ? 'user' : 'character';
+  const label = role === 'user' ? 'Your Action' : 'The Story Continues';
+  const max = role === 'user' ? ADVENTURE_MAX_USER_CHARS : ADVENTURE_MAX_STORY_CHARS;
+  const text = truncate(collapseBlankLines(msg.text || ''), max);
+  return `<div class="msg msg-${role}"><div class="msg-inner"><div class="msg-label">${escapeHtml(
+    label
+  )}</div><div class="msg-text">${escapeAndBreak(text)}</div></div></div>`;
+}
+
+interface AdventureCardTokenData extends Record<string, string> {
+  adventureTitle: string;
+  platform: string;
+  cardIndex: string;
+  messagesHtml: string;
+  date: string;
+}
+
+function buildAdventureCardTokens(params: {
+  meta: AdventureMeta;
+  date: string;
+  pair: { first: ChatMessage; second: ChatMessage | null };
+  index: number;
+  total: number;
+}): AdventureCardTokenData {
+  const { meta, date, pair, index, total } = params;
+  const first = adventureBubbleHtml(pair.first);
+  const second = pair.second ? adventureBubbleHtml(pair.second) : '';
+  return {
+    adventureTitle: meta.title,
+    platform: meta.platform,
+    cardIndex: `Chapter ${index} of ${total}`,
+    messagesHtml: first + second,
+    date,
+  };
+}
+
+export async function buildAdventureStoryCardsZip(
+  meta: AdventureMeta,
+  messages: ChatMessage[],
+  onProgress?: (done: number, total: number) => void
+): Promise<Blob> {
+  const dateStr = `Exported ${new Date().toISOString().slice(0, 10)}`;
+  const pairs = pairMessages(messages);
+  const total = pairs.length;
+  let done = 0;
+
+  const blobs: Array<{ name: string; blob: Blob }> = [];
+  for (let i = 0; i < pairs.length; i++) {
+    const tokens = buildAdventureCardTokens({
+      meta,
+      date: dateStr,
+      pair: pairs[i],
+      index: i + 1,
+      total,
+    });
+    const blob = await renderCardToBlob(ADVENTURE_STORY_CARD, tokens);
+    blobs.push({ name: `${pad2(i + 1)}-chapter-${pad2(i + 1)}.png`, blob });
+    onProgress?.(++done, total);
+  }
+
+  const zip = new JSZip();
+  for (const { name, blob } of blobs) zip.file(name, blob);
+  zip.file(
+    'metadata.json',
+    JSON.stringify(
+      {
+        adventure: meta,
+        generatedAt: new Date().toISOString(),
+        cards: blobs.map((b) => b.name),
+        messageCount: messages.length,
+      },
+      null,
+      2
+    )
+  );
+  return zip.generateAsync({ type: 'blob' });
+}
+
+export async function buildAdventurePreviewSrcDoc(
+  meta: AdventureMeta,
+  messages: ChatMessage[]
+): Promise<string | null> {
+  const pairs = pairMessages(messages);
+  if (pairs.length === 0) return null;
+  const tokens = buildAdventureCardTokens({
+    meta,
+    date: `Exported ${new Date().toISOString().slice(0, 10)}`,
+    pair: pairs[0],
+    index: 1,
+    total: pairs.length,
+  });
+  return loadPopulatedTemplate(ADVENTURE_STORY_CARD, tokens);
+}
+
+export function countAdventureCards(messages: ChatMessage[]): number {
+  return pairMessages(messages).length;
 }

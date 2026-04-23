@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Adventure Story Card — Wilds AI</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div class="stage">
+  <article class="card" data-card="adventure-story">
+    <div class="card-glow card-glow-a"></div>
+    <div class="card-glow card-glow-b"></div>
+    <div class="card-ornament card-ornament-tl"></div>
+    <div class="card-ornament card-ornament-br"></div>
+
+    <header class="card-top">
+      <div class="card-scene">{{cardIndex}}</div>
+      <div class="card-title-wrap">
+        <div class="card-title">{{adventureTitle}}</div>
+      </div>
+      <div class="card-platform">{{platform}}</div>
+    </header>
+
+    <div class="card-rule"></div>
+
+    <div class="card-messages">
+      {{messagesHtml}}
+    </div>
+
+    <footer class="card-footer">
+      <div class="card-brand">
+        <span class="card-brand-mark">W</span>
+        <span class="card-brand-name">Wilds AI</span>
+      </div>
+      <div class="card-date">{{date}}</div>
+    </footer>
+  </article>
+</div>
+
+<script>
+  // Standalone preview fallback: when opened with live-server any unreplaced
+  // {{tokens}} are swapped for demo values. The extension pre-fills these
+  // before injection so this is a no-op at export time.
+  (function () {
+    var demo = {
+      adventureTitle: "The Whispering Citadel",
+      platform: "AI Dungeon",
+      cardIndex: "Chapter 3 of 12",
+      date: "Exported 2026-04-22",
+      messagesHtml: [
+        '<div class="msg msg-user"><div class="msg-inner">',
+        '<div class="msg-label">Your Action</div>',
+        '<div class="msg-text">I unsheathe my blade and step forward, eyes locked on the goblin.</div>',
+        "</div></div>",
+        '<div class="msg msg-character"><div class="msg-inner">',
+        '<div class="msg-label">The Story Continues</div>',
+        '<div class="msg-text">The goblin\'s eyes widen as steel sings through the evening air. It scrambles backward, tripping over a root, while its companions scatter into the underbrush like startled birds. A moment of silence follows — broken only by the soft rustle of leaves and the distant cry of a raven.</div>',
+        "</div></div>",
+      ].join(""),
+    };
+    document.documentElement.innerHTML = document.documentElement.innerHTML.replace(
+      /\{\{(\w+)\}\}/g,
+      function (_, key) {
+        return demo[key] != null ? demo[key] : "";
+      }
+    );
+  })();
+</script>
+
+</body>
+</html>

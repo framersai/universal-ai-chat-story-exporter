@@ -2,12 +2,21 @@
  * Content script for character.ai and AI Dungeon
  */
 
-import { extractCharacterMetaCharacterAI, type CharacterMeta } from './metadata';
 import {
+  extractAdventureMetaAIDungeon,
+  extractCharacterMetaCharacterAI,
+  type AdventureMeta,
+  type CharacterMeta,
+} from './metadata';
+import {
+  ADVENTURE_STORY_CARD,
   CHARACTER_PROFILE_CARD,
+  buildAdventurePreviewSrcDoc,
+  buildAdventureStoryCardsZip,
   buildChatPreviewSrcDoc,
   buildProfilePreviewSrcDoc,
   buildStoryCardsZip,
+  countAdventureCards,
   countCards,
   type ChatMessage,
 } from './story-cards';
@@ -140,12 +149,12 @@ function sanitize(name: string) {
 }
 
 interface ExportPayload {
-  title: string;
   timestamp: string;
   url: string;
   site: Site;
   messages: Array<{ name?: string; role: string; text: string }>;
   characterMeta: CharacterMeta | null;
+  adventureMeta: AdventureMeta | null;
 }
 
 function showExportUI(data: ExportPayload) {
@@ -177,7 +186,7 @@ function showExportUI(data: ExportPayload) {
         <p style="margin: 4px 0 0; font-size: 0.85rem; color: #6b7280;">
           ${data.messages.length} messages${
     data.characterMeta ? ` · ${data.characterMeta.name}` : ''
-  }
+  }${data.adventureMeta ? ` · ${data.adventureMeta.title}` : ''}
         </p>
       </div>
     </div>
@@ -231,7 +240,7 @@ function showExportUI(data: ExportPayload) {
   tabJson.onclick = () => setActiveTab('json');
   tabCards.onclick = () => setActiveTab('cards');
   // Default tab depends on whether we have character metadata to show.
-  setActiveTab(data.characterMeta ? 'cards' : 'json');
+  setActiveTab(data.characterMeta || data.adventureMeta ? 'cards' : 'json');
 
   document.body.appendChild(overlay);
   document.body.appendChild(modal);
@@ -270,7 +279,9 @@ function renderJsonPane(data: ExportPayload) {
     const blob = new Blob([JSON.stringify(data, null, 2)], {
       type: 'application/json',
     });
-    const slug = sanitize(data.characterMeta?.name || data.title);
+    const slug = sanitize(
+      data.characterMeta?.name || data.adventureMeta?.title || 'export'
+    );
     triggerBlobDownload(blob, `${getSite()}-${slug}-${Date.now()}.json`);
   };
 
@@ -281,17 +292,34 @@ function renderJsonPane(data: ExportPayload) {
 }
 
 function renderCardsPane(data: ExportPayload) {
+  if (data.characterMeta) return renderCharacterCardsPane(data);
+  if (data.adventureMeta) return renderAdventureCardsPane(data);
+
   const wrap = document.createElement('div');
   wrap.style.cssText = `display: flex; flex-direction: column; min-height: 0; flex: 1;`;
+  const msg = document.createElement('p');
+  msg.style.cssText = `padding: 24px; color: #6b7280; text-align: center;`;
+  msg.textContent = 'Story cards are not available on this page.';
+  wrap.appendChild(msg);
+  return wrap;
+}
 
-  if (!data.characterMeta) {
-    const msg = document.createElement('p');
-    msg.style.cssText = `padding: 24px; color: #6b7280; text-align: center;`;
-    msg.textContent =
-      'Story cards are only available on character.ai chats right now.';
-    wrap.appendChild(msg);
-    return wrap;
-  }
+function makeScaledIframe(width: number, height: number, targetW: number) {
+  const scale = targetW / width;
+  const f = document.createElement('iframe');
+  f.style.cssText = `
+    width: ${width}px; height: ${height}px; border: 0;
+    transform: scale(${scale}); transform-origin: top left;
+    margin-right: ${-(width - width * scale)}px;
+    margin-bottom: ${-(height - height * scale)}px;
+    background: transparent;
+  `;
+  return f;
+}
+
+function renderCharacterCardsPane(data: ExportPayload) {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = `display: flex; flex-direction: column; min-height: 0; flex: 1;`;
 
   const totalCards = countCards(data.messages as ChatMessage[]);
 
@@ -309,36 +337,21 @@ function renderCardsPane(data: ExportPayload) {
     gap: 20px; padding: 16px;
   `;
 
-  const CARD_W = CHARACTER_PROFILE_CARD.width;
-  const CARD_H = CHARACTER_PROFILE_CARD.height;
-  const targetW = 300;
-  const scale = targetW / CARD_W;
-
-  const makePreviewIframe = () => {
-    const f = document.createElement('iframe');
-    f.style.cssText = `
-      width: ${CARD_W}px; height: ${CARD_H}px; border: 0;
-      transform: scale(${scale}); transform-origin: top left;
-      margin-right: ${-(CARD_W - CARD_W * scale)}px;
-      margin-bottom: ${-(CARD_H - CARD_H * scale)}px;
-      background: transparent;
-    `;
-    return f;
-  };
-
-  const profileFrame = makePreviewIframe();
-  const chatFrame = makePreviewIframe();
+  const profileFrame = makeScaledIframe(
+    CHARACTER_PROFILE_CARD.width,
+    CHARACTER_PROFILE_CARD.height,
+    300
+  );
+  const chatFrame = makeScaledIframe(
+    CHARACTER_PROFILE_CARD.width,
+    CHARACTER_PROFILE_CARD.height,
+    300
+  );
   previewShell.appendChild(profileFrame);
   previewShell.appendChild(chatFrame);
   wrap.appendChild(previewShell);
 
-  const footer = document.createElement('div');
-  footer.style.cssText = `display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; align-items: center;`;
-
-  const status = document.createElement('span');
-  status.style.cssText = `font-size: 0.8rem; color: #6b7280; margin-right: auto;`;
-  footer.appendChild(status);
-
+  const { footer, status } = makeFooter();
   const downloadZipBtn = document.createElement('button');
   downloadZipBtn.textContent = 'Download Story Cards (ZIP)';
   downloadZipBtn.style.cssText = primaryBtnStyle('#6366f1');
@@ -371,17 +384,13 @@ function renderCardsPane(data: ExportPayload) {
   footer.appendChild(downloadZipBtn);
   wrap.appendChild(footer);
 
-  // Kick off preview renders in parallel.
   buildProfilePreviewSrcDoc(data.characterMeta!)
     .then((html) => {
       profileFrame.srcdoc = html;
     })
     .catch((err) => console.error('profile preview failed', err));
 
-  buildChatPreviewSrcDoc(
-    data.characterMeta!,
-    data.messages as ChatMessage[]
-  )
+  buildChatPreviewSrcDoc(data.characterMeta!, data.messages as ChatMessage[])
     .then((html) => {
       if (html) chatFrame.srcdoc = html;
       else chatFrame.remove();
@@ -392,6 +401,91 @@ function renderCardsPane(data: ExportPayload) {
     });
 
   return wrap;
+}
+
+function renderAdventureCardsPane(data: ExportPayload) {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = `display: flex; flex-direction: column; min-height: 0; flex: 1;`;
+
+  const total = countAdventureCards(data.messages as ChatMessage[]);
+
+  const header = document.createElement('div');
+  header.style.cssText = `margin-bottom: 10px; font-size: 0.85rem; color: #6b7280;`;
+  header.textContent =
+    total === 0
+      ? 'No story messages found to export.'
+      : `${total} story ${total === 1 ? 'card' : 'cards'} (2 messages each).`;
+  wrap.appendChild(header);
+
+  const previewShell = document.createElement('div');
+  previewShell.style.cssText = `
+    flex: 1; min-height: 300px; max-height: 55vh; overflow: auto; border: 1px solid #e5e7eb;
+    border-radius: 10px; background: #0b0714; display: flex; justify-content: center;
+    padding: 16px;
+  `;
+  const adventureFrame = makeScaledIframe(
+    ADVENTURE_STORY_CARD.width,
+    ADVENTURE_STORY_CARD.height,
+    640
+  );
+  previewShell.appendChild(adventureFrame);
+  wrap.appendChild(previewShell);
+
+  const { footer, status } = makeFooter();
+  const downloadZipBtn = document.createElement('button');
+  downloadZipBtn.textContent = 'Download Story Cards (ZIP)';
+  downloadZipBtn.style.cssText = primaryBtnStyle('#f59e0b');
+  downloadZipBtn.disabled = total === 0;
+  downloadZipBtn.style.opacity = total === 0 ? '0.5' : '1';
+  downloadZipBtn.onclick = async () => {
+    if (!data.adventureMeta || total === 0) return;
+    const original = downloadZipBtn.textContent;
+    downloadZipBtn.disabled = true;
+    downloadZipBtn.style.opacity = '0.7';
+    try {
+      const zip = await buildAdventureStoryCardsZip(
+        data.adventureMeta,
+        data.messages as ChatMessage[],
+        (done, totalCount) => {
+          downloadZipBtn.textContent = `Rendering ${done}/${totalCount}…`;
+          status.textContent = `Rendering card ${done} of ${totalCount}…`;
+        }
+      );
+      const slug = sanitize(data.adventureMeta.title);
+      triggerBlobDownload(zip, `wilds-${slug}-story-cards.zip`);
+      status.textContent = 'Downloaded.';
+    } catch (err) {
+      console.error('Adventure story card export failed', err);
+      status.textContent = 'Export failed — check console.';
+    } finally {
+      downloadZipBtn.disabled = false;
+      downloadZipBtn.style.opacity = '1';
+      downloadZipBtn.textContent = original!;
+    }
+  };
+  footer.appendChild(downloadZipBtn);
+  wrap.appendChild(footer);
+
+  buildAdventurePreviewSrcDoc(data.adventureMeta!, data.messages as ChatMessage[])
+    .then((html) => {
+      if (html) adventureFrame.srcdoc = html;
+      else adventureFrame.remove();
+    })
+    .catch((err) => {
+      console.error('adventure preview failed', err);
+      adventureFrame.remove();
+    });
+
+  return wrap;
+}
+
+function makeFooter() {
+  const footer = document.createElement('div');
+  footer.style.cssText = `display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; align-items: center;`;
+  const status = document.createElement('span');
+  status.style.cssText = `font-size: 0.8rem; color: #6b7280; margin-right: auto;`;
+  footer.appendChild(status);
+  return { footer, status };
 }
 
 function primaryBtnStyle(color: string) {
@@ -416,21 +510,24 @@ function addFloatingButton() {
   `;
   btn.onmouseover = () => (btn.style.transform = 'scale(1.05)');
   btn.onmouseout = () => (btn.style.transform = 'scale(1)');
-  btn.onclick = () => {
+  btn.onclick = async () => {
     const messages = extractChat();
     if (!messages || messages.length === 0) {
       alert('No messages found to export.');
       return;
     }
+    const site = getSite();
     const characterMeta =
-      getSite() === 'character' ? extractCharacterMetaCharacterAI() : null;
+      site === 'character' ? await extractCharacterMetaCharacterAI() : null;
+    const adventureMeta =
+      site === 'aidungeon' ? extractAdventureMetaAIDungeon() : null;
     showExportUI({
-      title: document.title,
       timestamp: new Date().toISOString(),
       url: window.location.href,
-      site: getSite(),
+      site,
       messages,
       characterMeta,
+      adventureMeta,
     });
   };
   document.body.appendChild(btn);
@@ -458,23 +555,28 @@ handleUIVisibility();
 
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   if (request.action === 'EXPORT_CHAT') {
-    const messages = extractChat();
-    if (!messages || messages.length === 0) {
-      sendResponse({ success: false, error: 'No messages found.' });
-      return;
-    }
-    const characterMeta =
-      getSite() === 'character' ? extractCharacterMetaCharacterAI() : null;
-    const data: ExportPayload = {
-      title: document.title,
-      timestamp: new Date().toISOString(),
-      url: window.location.href,
-      site: getSite(),
-      messages,
-      characterMeta,
-    };
-    sendResponse({ success: true, data });
-    showExportUI(data);
+    (async () => {
+      const messages = extractChat();
+      if (!messages || messages.length === 0) {
+        sendResponse({ success: false, error: 'No messages found.' });
+        return;
+      }
+      const site = getSite();
+      const characterMeta =
+        site === 'character' ? await extractCharacterMetaCharacterAI() : null;
+      const adventureMeta =
+        site === 'aidungeon' ? extractAdventureMetaAIDungeon() : null;
+      const data: ExportPayload = {
+        timestamp: new Date().toISOString(),
+        url: window.location.href,
+        site,
+        messages,
+        characterMeta,
+        adventureMeta,
+      };
+      sendResponse({ success: true, data });
+      showExportUI(data);
+    })();
   }
   return true;
 });

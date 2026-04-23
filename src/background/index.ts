@@ -22,10 +22,35 @@ async function fetchImageAsDataUrl(url: string): Promise<string> {
   return blobToDataUrl(blob);
 }
 
+async function fetchCharacterInfo(externalId: string): Promise<any> {
+  const res = await fetch(
+    'https://neo.character.ai/character/v1/get_character_info',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ external_id: externalId, lang: 'en' }),
+    }
+  );
+  if (!res.ok) throw new Error(`get_character_info -> ${res.status}`);
+  return res.json();
+}
+
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   if (request?.action === 'FETCH_IMAGE' && typeof request.url === 'string') {
     fetchImageAsDataUrl(request.url)
       .then((dataUrl) => sendResponse({ success: true, dataUrl }))
+      .catch((err) =>
+        sendResponse({ success: false, error: String(err?.message || err) })
+      );
+    return true; // async response
+  }
+
+  if (
+    request?.action === 'FETCH_CHARACTER_INFO' &&
+    typeof request.externalId === 'string'
+  ) {
+    fetchCharacterInfo(request.externalId)
+      .then((data) => sendResponse({ success: true, data }))
       .catch((err) =>
         sendResponse({ success: false, error: String(err?.message || err) })
       );
