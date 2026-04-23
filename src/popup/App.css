@@ -32,6 +32,12 @@ body {
 .main-logo {
   width: 32px;
   height: 32px;
+  display: block;
+}
+
+.logo-container a {
+  display: inline-flex;
+  line-height: 0;
 }
 
 header h1 {
@@ -108,4 +114,14 @@ footer {
   border-top: 1px solid var(--border-color);
   padding-top: 16px;
   margin-top: 8px;
+}
+
+footer a {
+  color: var(--primary-color);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+footer a:hover {
+  text-decoration: underline;
 }

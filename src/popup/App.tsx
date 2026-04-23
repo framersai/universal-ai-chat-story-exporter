@@ -28,7 +28,9 @@ const App: React.FC = () => {
     <div className="container">
       <header>
         <div className="logo-container">
-          <img src="/wilds-logo.svg" alt="Wilds AI Logo" className="main-logo" />
+          <a href="https://wilds.ai/" target="_blank" rel="noopener noreferrer">
+            <img src="/wilds-logo.svg" alt="Wilds AI Logo" className="main-logo" />
+          </a>
           <h1>Wilds AI</h1>
         </div>
         <p className="subtitle">Universal Chat & Story Exporter</p>
@@ -55,7 +57,12 @@ const App: React.FC = () => {
         )}
       </main>
       <footer>
-        <p>&copy; 2026 Wilds AI</p>
+        <p>
+          &copy; 2026{' '}
+          <a href="https://wilds.ai/" target="_blank" rel="noopener noreferrer">
+            Wilds AI
+          </a>
+        </p>
       </footer>
     </div>
   );

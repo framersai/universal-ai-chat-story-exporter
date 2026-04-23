@@ -209,7 +209,9 @@ function showExportUI(data: ExportPayload) {
   header.style.cssText = `display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;`;
   header.innerHTML = `
     <div style="display: flex; align-items: center; gap: 12px;">
-      <img src="${LOGO_URL}" style="width: 32px; height: 32px;" />
+      <a href="https://wilds.ai/" target="_blank" rel="noopener noreferrer" style="display: inline-flex; line-height: 0;">
+        <img src="${LOGO_URL}" style="width: 32px; height: 32px;" />
+      </a>
       <div>
         <h2 style="margin:0; font-size: 1.35rem; font-weight: 700; color: #6366f1;">Export ${
           data.site === 'aidungeon' ? 'Adventure' : 'Chat'
@@ -272,6 +274,17 @@ function showExportUI(data: ExportPayload) {
   tabCards.onclick = () => setActiveTab('cards');
   // Default tab depends on whether we have character metadata to show.
   setActiveTab(data.characterMeta || data.adventureMeta ? 'cards' : 'json');
+
+  const modalFooter = document.createElement('div');
+  modalFooter.style.cssText = `
+    border-top: 1px solid #e5e7eb; margin-top: 16px; padding-top: 12px;
+    text-align: center; font-size: 0.75rem; color: #6b7280;
+  `;
+  modalFooter.innerHTML = `
+    &copy; 2026 <a href="https://wilds.ai/" target="_blank" rel="noopener noreferrer"
+      style="color: #6366f1; text-decoration: none; font-weight: 600;">Wilds AI</a>
+  `;
+  modal.appendChild(modalFooter);
 
   document.body.appendChild(overlay);
   document.body.appendChild(modal);
