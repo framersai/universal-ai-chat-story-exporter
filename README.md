@@ -12,6 +12,7 @@ to png, story cards, wilds ai exporter.
 
 [![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-Install-4285F4?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/)
 [![Version](https://img.shields.io/badge/version-0.2.0-blue)](./public/manifest.json)
+[![License](https://img.shields.io/badge/license-All%20rights%20reserved-lightgrey)](#-license)
 [![Made by Wilds AI](https://img.shields.io/badge/Made%20by-Wilds%20AI-6366f1)](https://wilds.ai)
 
 <p align="center">
@@ -20,41 +21,71 @@ to png, story cards, wilds ai exporter.
   </a>
 </p>
 
-**Wilds AI Exporter** is a professional Chrome extension that lets roleplayers, writers, and researchers **export Character.AI chats**, **back up AI Dungeon adventures**, and **save AI roleplay transcripts** to clean, structured JSON — or render them as shareable PNG story cards. Everything runs in your browser: no accounts, no servers, no tracking.
+**Wilds AI Exporter** is a free, open-source Chrome extension that lets roleplayers, writers, researchers, and AI enthusiasts **export Character.AI chats**, **back up AI Dungeon adventures**, and **save AI roleplay transcripts** to clean, structured JSON — or render them as shareable PNG story cards. Everything runs locally in your browser: no accounts, no servers, no tracking.
 
-Keywords: `character.ai exporter` · `export character ai to json` · `ai dungeon adventure export` · `ai chat backup` · `ai roleplay download` · `ai chat to png` · `character ai story cards`
+Built and maintained by the [Wilds AI](https://wilds.ai) team. Last updated April 2026.
 
 ---
+
+## 📑 Table of Contents
+
+- [Why Wilds AI Exporter?](#-why-wilds-ai-exporter)
+- [Features](#-features)
+- [Supported Platforms](#-supported-platforms)
+- [Installation](#-installation)
+- [How to Use](#-how-to-use)
+- [Use Cases](#-use-cases)
+- [Data Structure](#-data-structure)
+- [Privacy](#-privacy)
+- [FAQ](#-faq)
+- [Development](#-development)
+- [About Wilds AI](#-about-wilds-ai)
+- [License](#-license)
+
+---
+
+## 🌟 Why Wilds AI Exporter?
+
+If you've ever lost access to a Character.AI bot after a platform update, had an AI Dungeon adventure disappear, or wanted to share a favorite roleplay moment on social media — this extension is built for you.
+
+- **One click, full export** — no copy-pasting messages by hand.
+- **Works with the real backends** — we use the official Character.AI `get_character_info` and AI Dungeon GraphQL APIs, so you get the same data the site itself shows you (full character profile, adventure memory, story cards, etc.).
+- **Private by design** — unlike cloud-based exporters, nothing ever leaves your browser. No account required.
+- **Two output formats** — portable JSON for archives and re-imports, or polished PNG story cards for sharing.
+- **Actively maintained** — new features (AI Dungeon story-card exports, rich metadata) ship regularly.
 
 ## ✨ Features
 
 - **One-Click Export** — A floating button appears on any chat or adventure page. Click once to extract everything.
-- **Beautiful Story Cards** — Render chats and character profiles as shareable PNG cards (profile + paired message cards), bundled as a zip.
-- **Multi-Platform** — Works with [Character.AI](https://character.ai) and [AI Dungeon](https://play.aidungeon.com) out of the box.
-- **Rich Metadata** — Captures character name, description, greeting, creator, upvotes, likes, interactions, adventure memory, author's note, story cards, tags, and more.
-- **Instant Preview** — See your export in-page before you save it.
-- **Private by Design** — All processing happens locally in your browser. No analytics, no external servers, no data ever leaves your machine.
-- **Open Format** — Export as portable `.json` (human-readable, easy to diff, easy to re-import).
+- **Beautiful PNG Story Cards** — Render chats and character profiles as shareable PNG cards (profile + paired message cards), plus AI Dungeon world-info lore cards, all bundled into a zip.
+- **Multi-Platform** — Works with [Character.AI](https://character.ai) and [AI Dungeon](https://play.aidungeon.com) out of the box. More platforms coming.
+- **Rich Metadata Capture** — Name, description, greeting, creator, upvotes, likes, interactions for Character.AI; memory, author's note, tags, story cards (lore entries), author, and the full action log for AI Dungeon.
+- **Instant In-Page Preview** — Review the JSON or rendered PNG cards before you save them.
+- **Private by Design** — All processing happens locally in your browser. Zero analytics, zero servers, zero data leaves your machine.
+- **Open Format** — Human-readable JSON (`.json`) — easy to diff, archive, re-import, or feed back into other tools.
 
 ## 🚀 Supported Platforms
 
 | Platform | What gets exported |
-|---|---|
-| **Character.AI** | Full chat history, character profile (name, description, greeting, definition, avatar), likes, interactions, upvotes |
-| **AI Dungeon** | Full adventure (actions + AI narration), memory, author's note, story cards, tags, cover image, author |
+| --- | --- |
+| **Character.AI** (`character.ai`) | Full chat history, character profile (name, description, greeting, definition, avatar), likes, interactions, upvotes, creator username |
+| **AI Dungeon** (`play.aidungeon.com`) | Full adventure (actions + AI narration), memory, author's note, **story cards / world-info lore entries**, tags, cover image, author profile |
 
 ## 📦 Installation
 
 ### Chrome Web Store (recommended)
-Install [Wilds AI Exporter](https://chromewebstore.google.com/) from the Chrome Web Store.
 
-### From Source
+Install [Wilds AI Exporter](https://chromewebstore.google.com/) from the Chrome Web Store — one click, auto-updating.
+
+### From Source (for developers)
+
 ```bash
 git clone https://github.com/framersai/universal-ai-chat-story-exporter.git
 cd universal-ai-chat-story-exporter
 npm install
 npm run build
 ```
+
 Then open `chrome://extensions/`, enable **Developer mode**, click **Load unpacked**, and select the `dist/` folder.
 
 ## 🧑‍💻 How to Use
@@ -63,17 +94,26 @@ Then open `chrome://extensions/`, enable **Developer mode**, click **Load unpack
 2. Click the **Export Chat** / **Export Adventure** button in the bottom-right corner.
 3. Preview your export, then:
    - **Copy JSON** to your clipboard, or
-   - **Download JSON** as a file, or
+   - **Download JSON** as a `.json` file, or
    - **Download Story Cards (ZIP)** — a pack of shareable PNG cards.
+
+## 💡 Use Cases
+
+- **Backup before a platform update** — save your favorite Character.AI chats and AI Dungeon adventures locally so you never lose them.
+- **Archive roleplay chats** — keep a permanent record of long-running Character.AI roleplays for writing reference.
+- **Share on social media** — turn your favorite AI chat moments into polished PNG story cards ready for Twitter, Reddit, or Discord.
+- **Feed into other AI tools** — export as JSON and pipe it into your own scripts, LLM pipelines, or writing apps.
+- **Document AI creative work** — writers, researchers, and educators can archive AI-assisted sessions for later citation or analysis.
+- **Migrate between platforms** — export from one AI platform and import or reconstruct on another.
 
 ## 🗂 Data Structure
 
-A Character.AI export looks like:
+### Character.AI export
 
 ```json
 {
   "timestamp": "2026-04-24T12:34:56.000Z",
-  "url": "https://character.ai/chat/<id>",
+  "url": "https://character.ai/chat/abc123xyz",
   "site": "character",
   "messages": [
     { "name": "You", "role": "user", "text": "Hello!" },
@@ -81,49 +121,140 @@ A Character.AI export looks like:
   ],
   "characterMeta": {
     "name": "Vegeta",
+    "title": "Prince of all Saiyans",
     "creator": "bignoodle",
-    "description": "Prince of all Saiyans…",
-    "greeting": "What are you doing here?",
+    "description": "The proud Saiyan prince from Dragon Ball Z. Fierce, competitive, and not one for small talk.",
+    "greeting": "What are you doing here, earthling?",
+    "definition": "",
     "upvotes": 12345,
+    "avatarUrl": "https://characterai.io/i/400/static/avatars/uploaded/2024/3/vegeta.webp",
+    "platform": "character.ai",
     "likes": 1700,
     "interactions": 7300000,
-    "platform": "character.ai",
-    "info": { "/* remaining API fields */": null }
-  },
-  "adventureMeta": null
+    "info": {
+      "external_id": "abc123xyz",
+      "participant__name": "Vegeta",
+      "user__username": "bignoodle",
+      "num_interactions": 7300000,
+      "visibility": "PUBLIC",
+      "copyable": false,
+      "img_gen_enabled": true,
+      "categories": ["Anime", "Dragon Ball"],
+      "created_at": "2023-06-15T14:22:00.000Z"
+    }
+  }
 }
 ```
 
-AI Dungeon exports share the same shape with `adventureMeta` populated (title, description, memory, authorsNote, storyCards, tags, author, …) and `characterMeta` set to `null`.
+### AI Dungeon export
+
+```json
+{
+  "timestamp": "2026-04-24T15:10:00.000Z",
+  "url": "https://play.aidungeon.com/adventure/whisper-citadel/the-whispering-citadel/play",
+  "site": "aidungeon",
+  "messages": [
+    { "name": "Story/AI", "role": "character", "text": "The wind howls through the ruined archway…" },
+    { "name": "You", "role": "user", "text": "I draw my blade and step into the courtyard." }
+  ],
+  "adventureMeta": {
+    "title": "The Whispering Citadel",
+    "platform": "AI Dungeon",
+    "description": "A dark fantasy adventure in a kingdom haunted by its own past.",
+    "image": "https://files.aidungeon.com/adventures/abc.jpg",
+    "memory": "You are Kael, a rogue sorcerer seeking redemption in the ruins of Vaelor.",
+    "authorsNote": "Keep responses dark and atmospheric.",
+    "author": "QuillSpinner",
+    "authorAvatar": "https://files.aidungeon.com/users/qs.jpg",
+    "characterName": "Kael",
+    "tags": ["fantasy", "dark", "magic"],
+    "storyCards": [
+      {
+        "id": "222653471",
+        "type": "location",
+        "title": "basement",
+        "keys": "basement",
+        "value": "The basement of Covenant House is full of defunct alchemical apparatus and broken orreries.",
+        "description": "",
+        "useForCharacterCreation": true
+      }
+    ],
+    "info": {
+      "id": "adv-abc123",
+      "shortId": "whisper-citadel",
+      "actionCount": 142,
+      "contentType": "adventure",
+      "createdAt": "2026-01-10T09:15:00.000Z",
+      "published": false,
+      "nsfw": false,
+      "contentRating": "PG13"
+    }
+  }
+}
+```
+
+Both exports share a common top-level shape (`timestamp`, `url`, `site`, `messages`). The `characterMeta` field is present on Character.AI exports and `adventureMeta` on AI Dungeon exports.
 
 ## 🔒 Privacy
 
-- No accounts, no sign-in, no telemetry.
-- No data leaves your browser. API calls to `character.ai` / `aidungeon.com` only happen on pages you're already browsing, to fetch data the site itself exposes to your session.
-- The only permissions the extension uses are `downloads` (to save files) and host access for the two supported sites.
+- **No accounts, no sign-in, no telemetry.** We don't know you installed this.
+- **No data leaves your browser.** API calls to `character.ai` / `aidungeon.com` only happen on pages you're already browsing, to fetch data the site itself exposes to your session.
+- **Minimum permissions.** The extension requests only `downloads` (to save files) and host access for the two supported sites.
+- **Open source.** The full source is in this repository — you can audit exactly what it does.
 
 ## ❓ FAQ
 
-**How do I export my Character.AI chat?**
-Install the extension, open your chat on character.ai, and click the **Export Chat** button in the bottom-right corner. Pick JSON or PNG story cards.
+### How do I export my Character.AI chat?
 
-**How do I back up an AI Dungeon adventure?**
-Open the adventure on `play.aidungeon.com` and click **Export Adventure**. You'll get the full action log plus adventure metadata (memory, author's note, story cards, tags).
+Install the extension, open your chat on character.ai, and click the **Export Chat** button in the bottom-right corner. Choose to download as JSON or a ZIP of PNG story cards.
 
-**Is Wilds AI Exporter free?**
-Yes — completely free. No ads, no paywall, no data collection.
+### How do I back up an AI Dungeon adventure?
 
-**Does it upload my chats anywhere?**
-No. All extraction and rendering runs locally in your browser.
+Open the adventure on `play.aidungeon.com` and click **Export Adventure**. You'll get the full action log plus adventure metadata (memory, author's note, story cards, tags), optionally as shareable PNG cards.
 
-**What format are the exports?**
-JSON (`.json`) or a ZIP of PNG story cards. Both are portable and easy to archive.
+### Can I save my Character.AI chats before they're deleted?
 
-**Will this delete or modify my chats?**
+Yes — this extension is designed for exactly that. Character.AI has changed content policies and removed bots before. One click captures the full conversation plus character profile locally so you always have a copy.
+
+### Is Wilds AI Exporter free?
+
+Yes — completely free and open source. No ads, no paywall, no data collection, no subscription.
+
+### Does it upload my chats anywhere?
+
+No. All extraction and rendering runs locally in your browser. Your conversations never touch a Wilds AI server.
+
+### What format are the exports?
+
+Portable JSON (`.json`) — human-readable and easy to archive or feed into other tools — or a ZIP of PNG story cards for sharing on social media.
+
+### Will this delete or modify my chats?
+
 No. The extension is read-only: it only reads what's already displayed on the page.
 
-**Does it work with the Character.AI mobile app?**
-No — it's a Chrome browser extension, so it works on the Character.AI website in Chrome on desktop.
+### Does it work with the Character.AI mobile app?
+
+No — it's a Chrome browser extension, so it works on the Character.AI website in Chrome (or any Chromium-based browser like Edge, Brave, Arc) on desktop.
+
+### Does it work with AI Dungeon Scenarios?
+
+The exporter reads adventures at `play.aidungeon.com/adventure/<id>/.../play`. Scenarios themselves are not directly supported yet, but any adventure created from a scenario exports normally.
+
+### Which browsers are supported?
+
+Chrome, Edge, Brave, Arc, Opera, and any other Chromium-based browser that supports Chrome extensions (MV3).
+
+### What about Character.AI images or voice?
+
+The current export captures text messages plus character metadata (including avatar URL). Generated images and voice clips are not extracted.
+
+### Can I re-import my exported JSON somewhere?
+
+The exported JSON is a clean, documented structure — you can feed it into your own scripts, use it as context for an LLM, or build a viewer. A companion web viewer on [wilds.ai](https://wilds.ai) is planned.
+
+### Is this affiliated with Character.AI or AI Dungeon?
+
+No. Wilds AI Exporter is an independent tool made by the Wilds AI team. See the disclaimer below.
 
 ## 🛠 Development
 
@@ -132,12 +263,18 @@ npm run dev     # Vite dev server for the popup
 npm run build   # Build for production (outputs to dist/)
 ```
 
+Contributions welcome — open an issue or PR on GitHub.
+
+## 👥 About Wilds AI
+
+Wilds AI builds tools for the AI roleplay, interactive fiction, and AI-assisted writing community. Learn more at [wilds.ai](https://wilds.ai). For feedback, bug reports, or feature requests, open an issue on this repository.
+
 ## 📄 License
 
 &copy; 2026 [Wilds AI](https://wilds.ai). All rights reserved.
 
 ---
 
-**Keywords:** Character.AI exporter, Character AI chat export, AI Dungeon exporter, AI Dungeon adventure export, export Character AI to JSON, download Character AI chats, Character AI backup, AI Dungeon backup, AI roleplay export, AI companion chat export, Chrome extension Character AI, export AI conversations, AI chat to PNG, story cards, Wilds AI exporter.
+**Related keywords:** Character.AI exporter · Character AI chat export · AI Dungeon exporter · AI Dungeon adventure export · export Character AI to JSON · download Character AI chats · Character AI backup · AI Dungeon backup · AI roleplay export · AI companion chat export · Chrome extension Character AI · export AI conversations · AI chat to PNG · story cards · Wilds AI exporter.
 
-*Disclaimer: This extension is an independent project and is not affiliated with, endorsed by, or sponsored by Character.AI, AI Dungeon, Latitude, or any of their affiliates.*
+*Disclaimer: This extension is an independent project and is not affiliated with, endorsed by, or sponsored by Character.AI, AI Dungeon, Latitude Games, or any of their affiliates.*
