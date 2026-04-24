@@ -1,6 +1,6 @@
 {
   "name": "wilds-ai-universal-exporter",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Wilds AI: Universal AI Chat & Story Exporter",
   "type": "module",
   "scripts": {
