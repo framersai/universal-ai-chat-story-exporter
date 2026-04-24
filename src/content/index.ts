@@ -1,5 +1,16 @@
 /**
- * Content script for character.ai and AI Dungeon
+ * Content script injected into character.ai and AI Dungeon pages.
+ *
+ * Responsibilities:
+ *  - Detect the current site and whether we're on a chat/adventure page.
+ *  - Inject the floating "Export" button and export modal.
+ *  - Extract chat messages from the live DOM.
+ *  - Orchestrate the export flow: collect messages + metadata, then hand off
+ *    to the JSON / story-card renderers.
+ *  - Respond to `EXPORT_CHAT` messages from the popup.
+ *
+ * Kept as a single bundle (see `vite.content.config.ts`) because MV3 content
+ * scripts can't use top-level ESM imports — everything must be IIFE.
  */
 
 import {
@@ -27,8 +38,10 @@ console.log('Wilds AI Exporter: Content script loaded');
 
 const LOGO_URL = chrome.runtime.getURL('wilds-logo.svg');
 
+/** Supported host shorthand used throughout the content script. */
 type Site = 'character' | 'aidungeon' | null;
 
+/** Identify the current host; returns `null` if we're on an unknown site. */
 function getSite(): Site {
   const host = window.location.hostname;
   if (host.includes('character.ai')) return 'character';
@@ -36,6 +49,11 @@ function getSite(): Site {
   return null;
 }
 
+/**
+ * Whether the current URL is a chat/adventure view (as opposed to the site's
+ * homepage, search, profile, etc.). Used to decide whether to show the
+ * floating Export button.
+ */
 function isChatPage() {
   const site = getSite();
   const path = window.location.pathname;
@@ -51,6 +69,16 @@ function isChatPage() {
   return false;
 }
 
+/**
+ * Scrape the character.ai chat transcript from the live DOM.
+ *
+ * The chat list is rendered inside `#chat-messages` as a column of "message
+ * groups". Each group may contain multiple completed-message nodes if the
+ * user has used character.ai's "swipes" feature to regenerate a reply —
+ * in that case we pick the active swipe slide so we get the version the
+ * user currently sees. Finally, the list is reversed because character.ai
+ * renders newest-first top-to-bottom.
+ */
 function extractCharacterAI() {
   const container = document.getElementById('chat-messages');
   if (!container) return null;
@@ -100,6 +128,12 @@ function extractCharacterAI() {
   return extractedMessages.reverse();
 }
 
+/**
+ * DOM-fallback extractor for AI Dungeon. The GraphQL API (see
+ * `extractAIDungeonAdventure`) is the preferred path; this only runs when the
+ * API call fails (logged out, rate limited, or network error). It relies on
+ * the AI Dungeon DOM structure and will miss anything off-screen.
+ */
 function extractAIDungeon() {
   const container = document.getElementById('gameplay-output');
   if (!container) return null;
@@ -128,6 +162,14 @@ function extractAIDungeon() {
   return extractedMessages;
 }
 
+/**
+ * Gather every piece of data the exporter needs for the current page.
+ *
+ * Branches on site and returns exactly one of `characterMeta` /
+ * `adventureMeta`. For AI Dungeon, it tries the GraphQL API first; if that
+ * fails (no auth token, request error) it falls back to DOM scraping with
+ * a title-only `AdventureMeta`.
+ */
 async function collectExportData(): Promise<{
   messages: Array<{ name?: string; role: string; text: string }>;
   characterMeta: CharacterMeta | null;
@@ -164,6 +206,11 @@ async function collectExportData(): Promise<{
   return { messages: [], characterMeta: null, adventureMeta: null };
 }
 
+/**
+ * Trigger a browser download for an in-memory Blob by programmatically
+ * clicking a temporary anchor element. The object URL is revoked shortly
+ * after to release memory (delayed so the download has a chance to start).
+ */
 function triggerBlobDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -175,10 +222,12 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** Turn a display name into a filesystem-safe slug, capped at 40 chars. */
 function sanitize(name: string) {
   return (name || 'export').replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 40) || 'export';
 }
 
+/** Serializable payload handed off to both the JSON download and the preview pane. */
 interface ExportPayload {
   timestamp: string;
   url: string;
@@ -188,6 +237,12 @@ interface ExportPayload {
   adventureMeta: AdventureMeta | null;
 }
 
+/**
+ * Open the export modal overlay. The modal has two tabs (JSON / Story Cards)
+ * and shows the appropriate pane based on whether we have character or
+ * adventure metadata. The modal returns itself by replacing the DOM on
+ * close — no framework involved, just handwritten DOM.
+ */
 function showExportUI(data: ExportPayload) {
   if (document.getElementById('cai-exporter-modal')) return;
 
@@ -290,6 +345,7 @@ function showExportUI(data: ExportPayload) {
   document.body.appendChild(modal);
 }
 
+/** Build the "JSON" tab: pretty-printed preview + Copy / Download buttons. */
 function renderJsonPane(data: ExportPayload) {
   const wrap = document.createElement('div');
   wrap.style.cssText = `display: flex; flex-direction: column; min-height: 0; flex: 1;`;
@@ -335,6 +391,7 @@ function renderJsonPane(data: ExportPayload) {
   return wrap;
 }
 
+/** Dispatch to the platform-specific story-cards pane, or show an empty state. */
 function renderCardsPane(data: ExportPayload) {
   if (data.characterMeta) return renderCharacterCardsPane(data);
   if (data.adventureMeta) return renderAdventureCardsPane(data);
@@ -348,6 +405,12 @@ function renderCardsPane(data: ExportPayload) {
   return wrap;
 }
 
+/**
+ * Create an iframe that renders at the card's full native size but visually
+ * scales down to `targetW` CSS pixels. Using a scaled iframe (rather than a
+ * small iframe with responsive CSS) keeps the preview pixel-perfect with the
+ * final html2canvas output.
+ */
 function makeScaledIframe(width: number, height: number, targetW: number) {
   const scale = targetW / width;
   const f = document.createElement('iframe');
@@ -361,6 +424,7 @@ function makeScaledIframe(width: number, height: number, targetW: number) {
   return f;
 }
 
+/** Story Cards pane for character.ai: shows profile + first chat preview. */
 function renderCharacterCardsPane(data: ExportPayload) {
   const wrap = document.createElement('div');
   wrap.style.cssText = `display: flex; flex-direction: column; min-height: 0; flex: 1;`;
@@ -447,6 +511,7 @@ function renderCharacterCardsPane(data: ExportPayload) {
   return wrap;
 }
 
+/** Story Cards pane for AI Dungeon: single landscape-card preview. */
 function renderAdventureCardsPane(data: ExportPayload) {
   const wrap = document.createElement('div');
   wrap.style.cssText = `display: flex; flex-direction: column; min-height: 0; flex: 1;`;
@@ -523,6 +588,10 @@ function renderAdventureCardsPane(data: ExportPayload) {
   return wrap;
 }
 
+/**
+ * Shared footer row used by both card panes: left-aligned status text +
+ * right-aligned action buttons (buttons are appended by the caller).
+ */
 function makeFooter() {
   const footer = document.createElement('div');
   footer.style.cssText = `display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; align-items: center;`;
@@ -532,11 +601,16 @@ function makeFooter() {
   return { footer, status };
 }
 
+/** Shared inline style for the modal's primary (filled) buttons. */
 function primaryBtnStyle(color: string) {
   return `padding: 10px 16px; background: ${color}; color: white; border: none;
           border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.9rem;`;
 }
 
+/**
+ * Inject the floating "Export Chat/Adventure" button anchored to the bottom
+ * right of the viewport. No-op if the button already exists.
+ */
 function addFloatingButton() {
   if (document.getElementById('cai-exporter-btn')) return;
 
@@ -572,6 +646,14 @@ function addFloatingButton() {
   document.body.appendChild(btn);
 }
 
+/**
+ * Add or remove the floating Export button based on the current route.
+ *
+ * character.ai and AI Dungeon are both SPAs, so client-side navigation
+ * doesn't fire `popstate` reliably — we also hook into a `MutationObserver`
+ * on `<body>` to re-evaluate whenever the DOM changes. The `hasMessages`
+ * check also prevents the button from showing on an empty chat shell.
+ */
 function handleUIVisibility() {
   const isChat = isChatPage();
   const hasMessages = !!(
@@ -592,6 +674,9 @@ observer.observe(document.body, { childList: true, subtree: true });
 window.addEventListener('popstate', handleUIVisibility);
 handleUIVisibility();
 
+// Handle "Export" triggers originating from the toolbar popup. The popup
+// dispatches EXPORT_CHAT to the active tab; we respond with the collected
+// data and open the modal in the page as a courtesy.
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   if (request.action === 'EXPORT_CHAT') {
     (async () => {

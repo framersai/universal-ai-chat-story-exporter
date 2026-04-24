@@ -1,64 +1,129 @@
 /**
- * Character metadata extraction for supported platforms.
+ * Platform-specific metadata extraction.
+ *
+ * Responsible for turning live DOM + backend APIs into the normalized
+ * `CharacterMeta` / `AdventureMeta` shapes consumed by the exporter (JSON
+ * download + PNG story cards).
+ *
+ * Extraction strategy is two-tier:
+ *  - **character.ai**: Reads the chat intro block for name/avatar (what the
+ *    user actually sees) and calls the `get_character_info` API for
+ *    authoritative description/greeting/definition/upvotes/interactions.
+ *    The Like count is read from the DOM because it isn't exposed in the API.
+ *  - **AI Dungeon**: Hits the GraphQL `GetGameplayAdventure` query for the
+ *    full adventure (actions, memory, story cards, tags, author). DOM
+ *    fallback via `extractAdventureMetaAIDungeon` handles logged-out users.
+ *
+ * Cross-origin fetches go through the background service worker — see
+ * `src/background/index.ts`.
  */
 
+/**
+ * Normalized character metadata produced for character.ai exports.
+ *
+ * Fields at the top level are stable (promoted from the raw API); everything
+ * else from `get_character_info` lives under `info` so JSON consumers can
+ * still reach platform-specific data without polluting the root object.
+ */
 export interface CharacterMeta {
+  /** Display name. */
   name: string;
+  /** Character title/tagline shown below the name. */
   title: string;
-  creator: string; // raw username from user__username (e.g. "bignoodle")
+  /** Creator's raw username (no "By @" prefix), e.g. "bignoodle". */
+  creator: string;
+  /** Long-form character description. */
   description: string;
+  /** Opening line spoken by the character. */
   greeting: string;
-  definition: string; // empty unless info.has_definition is true
+  /** Creator-authored persona/definition. Empty unless `info.has_definition` is true. */
+  definition: string;
+  /** Number of upvotes reported by the API. */
   upvotes: number;
+  /** Full-size avatar URL (upscaled where possible). */
   avatarUrl: string;
+  /** Always "character.ai" for this shape. */
   platform: string;
+  /** Likes count parsed from the Like button (supports "1.7k", "7.3M"). */
   likes: number;
+  /** Cumulative interaction count from the API. */
   interactions: number;
+  /** Remaining API fields minus those promoted above. */
   info: Record<string, unknown> | null;
 }
 
+/** One AI Dungeon story card (world info / character / custom entry). */
 export interface AdventureStoryCard {
   id: string;
   type: string;
   title: string;
+  /** Comma-separated trigger keys. */
   keys: string;
+  /** Card body text injected into context when the keys match. */
   value: string;
   description: string;
 }
 
+/**
+ * Normalized AI Dungeon adventure metadata.
+ *
+ * Built from either the GraphQL `adventure` payload (preferred) or a DOM
+ * fallback that only fills `title`.
+ */
 export interface AdventureMeta {
   title: string;
-  platform: string; // e.g. "AI Dungeon"
+  /** Always "AI Dungeon" for this shape. */
+  platform: string;
   description: string;
-  image: string; // cover image URL
+  /** Cover image URL. */
+  image: string;
+  /** Persistent memory string prepended to every prompt. */
   memory: string;
+  /** Author's note string appended to every prompt. */
   authorsNote: string;
-  author: string; // creator username
+  /** Creator's display name (profile title or first player's username). */
+  author: string;
+  /** Creator's thumbnail URL, if available. */
   authorAvatar: string;
-  characterName: string; // player's character name
+  /** Player's in-game character name. */
+  characterName: string;
   tags: string[];
   storyCards: AdventureStoryCard[];
+  /** Remaining GraphQL fields minus those promoted above. */
   info: Record<string, unknown> | null;
 }
 
+/** One rendered message/action in an AI Dungeon adventure. */
 export interface AdventureMessage {
   id?: string;
+  /** "You" for user actions, "Story/AI" for AI continuations. */
   name: string;
-  role: string; // 'user' | 'character'
+  /** "user" | "character". */
+  role: string;
   text: string;
-  type?: string; // 'start' | 'continue' | 'do' | 'say' | 'story'
+  /** Raw AI Dungeon action type: "start" | "continue" | "do" | "say" | "story". */
+  type?: string;
   createdAt?: string;
 }
 
+/** The combined output of a GraphQL-based AI Dungeon extraction. */
 export interface AIDungeonAdventure {
   meta: AdventureMeta;
   messages: AdventureMessage[];
 }
 
+/** Return an element's trimmed `textContent`, or `''` if the element is missing. */
 function safeText(el: Element | null | undefined): string {
   return (el?.textContent || '').trim();
 }
 
+/**
+ * Parse the `__NEXT_DATA__` JSON blob that Next.js embeds on every page.
+ *
+ * character.ai is a Next.js app, so most initial props (including the full
+ * character object) are available here without an extra network call. We use
+ * it as a secondary source when the DOM or API can't produce a field.
+ */
 function readNextData(): any | null {
   const nextDataEl = document.getElementById('__NEXT_DATA__');
   if (!nextDataEl?.textContent) return null;
@@ -134,18 +199,20 @@ function fetchCharacterInfoViaBackground(
   });
 }
 
+/** Coerce an unknown value to a finite number, defaulting to 0. */
 function toFiniteNumber(v: unknown): number {
   return typeof v === 'number' && isFinite(v) ? v : 0;
 }
 
+/** Coerce an unknown value to a string, defaulting to ''. */
 function toStr(v: unknown): string {
   return typeof v === 'string' ? v : '';
 }
 
 /**
- * Strip the fields we promote to top-level from the raw API character
- * object so the `info` payload only carries the remaining API-specific
- * metadata.
+ * Keys from the `get_character_info` response that we promote to the top
+ * level of `CharacterMeta`. Anything not in this set stays under `info` so
+ * JSON consumers can still reach it without polluting the root object.
  */
 const PROMOTED_INFO_FIELDS = new Set([
   'title',
@@ -157,6 +224,7 @@ const PROMOTED_INFO_FIELDS = new Set([
   'upvotes',
 ]);
 
+/** Return a shallow copy of `info` with promoted keys removed. */
 function stripPromotedFromInfo(
   info: Record<string, unknown> | null
 ): Record<string, unknown> | null {
@@ -168,6 +236,11 @@ function stripPromotedFromInfo(
   return rest;
 }
 
+/**
+ * Construct a full avatar URL from the `avatar_file_name` stored in the API
+ * payload. character.ai serves avatars from `/i/<size>/static/avatars/...`;
+ * we request 400px which is large enough for the profile card.
+ */
 function buildAvatarUrl(avatarFileName: string): string {
   if (!avatarFileName) return '';
   return `https://characterai.io/i/400/static/avatars/${avatarFileName}`;
@@ -225,6 +298,18 @@ function fromChatIntroDom():
   return null;
 }
 
+/**
+ * Build a `CharacterMeta` for the currently-open character.ai chat page.
+ *
+ * Merges three data sources with the following precedence per field:
+ *  - DOM intro block: name, avatar (matches what the user sees).
+ *  - `get_character_info` API: everything else (title, description, greeting,
+ *    definition, upvotes, interactions).
+ *  - `__NEXT_DATA__` blob: fallback when the above are empty.
+ *
+ * Returns `null` if neither a name nor an avatar can be determined — that
+ * usually means we're on a page that isn't actually a chat view.
+ */
 export async function extractCharacterMetaCharacterAI(): Promise<CharacterMeta | null> {
   const dom = fromChatIntroDom();
   const nextData = readNextData();
@@ -281,6 +366,7 @@ export async function extractCharacterMetaCharacterAI(): Promise<CharacterMeta |
   };
 }
 
+/** Create an empty `AdventureMeta` shell with just a title populated. */
 function emptyAdventureMeta(title: string): AdventureMeta {
   return {
     title,
@@ -347,6 +433,13 @@ function getAIDungeonAccessToken(): string | null {
   }
 }
 
+/**
+ * Dispatch the GraphQL adventure fetch to the background service worker.
+ *
+ * The service worker has `host_permissions` for api.aidungeon.com; calling
+ * `fetch` directly from the content script would fail CORS preflight on a
+ * non-aidungeon page. Returns the `adventure` object or null on any failure.
+ */
 function fetchAdventureViaBackground(
   shortId: string,
   accessToken: string
@@ -370,6 +463,12 @@ function fetchAdventureViaBackground(
   });
 }
 
+/**
+ * Keys from the GraphQL `adventure` payload that we promote to the top level
+ * of `AdventureMeta`. `actionWindow` isn't promoted to `AdventureMeta` (it
+ * becomes `messages`), but we still strip it from `info` to avoid duplicating
+ * the full action history in the JSON export.
+ */
 const PROMOTED_ADVENTURE_FIELDS = new Set([
   'title',
   'description',
@@ -381,6 +480,7 @@ const PROMOTED_ADVENTURE_FIELDS = new Set([
   'actionWindow',
 ]);
 
+/** Return a shallow copy of the adventure object with promoted keys removed. */
 function stripPromotedFromAdventure(
   adv: Record<string, unknown> | null
 ): Record<string, unknown> | null {
@@ -392,6 +492,7 @@ function stripPromotedFromAdventure(
   return rest;
 }
 
+/** Normalize the GraphQL `storyCards` array into our simpler shape. */
 function buildAdventureStoryCards(adv: any): AdventureStoryCard[] {
   const cards = Array.isArray(adv?.storyCards) ? adv.storyCards : [];
   return cards.map((c: any) => ({
@@ -404,6 +505,13 @@ function buildAdventureStoryCards(adv: any): AdventureStoryCard[] {
   }));
 }
 
+/**
+ * Map a raw GraphQL `adventure` object into our `AdventureMeta` shape.
+ *
+ * Author lookup falls back through a chain: `user.profile.title` is the
+ * displayed creator for published scenarios; `allPlayers[0].user.username` is
+ * used for private adventures where the profile block is absent.
+ */
 function buildAdventureMetaFromApi(adv: any): AdventureMeta {
   const creatorUsername =
     toStr(adv?.user?.profile?.title) ||
@@ -432,6 +540,17 @@ function buildAdventureMetaFromApi(adv: any): AdventureMeta {
   };
 }
 
+/**
+ * Turn the GraphQL `actionWindow` array into a flat, chronologically-ordered
+ * message list.
+ *
+ * The request asks for `desc: true`, so we re-sort ascending by numeric id
+ * (falling back to `createdAt` if ids aren't parseable). Actions that were
+ * undone or deleted are dropped — they shouldn't appear in the exported
+ * transcript. Action `type` determines role:
+ *  - `do` / `say` / `story` → user input
+ *  - `start` / `continue`   → AI-generated narration
+ */
 function buildAdventureMessagesFromApi(adv: any): AdventureMessage[] {
   const actions = Array.isArray(adv?.actionWindow) ? adv.actionWindow : [];
   const sorted = [...actions].sort((a: any, b: any) => {

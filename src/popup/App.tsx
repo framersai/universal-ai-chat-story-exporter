@@ -1,16 +1,29 @@
 import React, { useState } from 'react';
 import './App.css';
 
+/**
+ * Toolbar popup UI.
+ *
+ * The popup is a thin shell — its only real job is to dispatch an
+ * `EXPORT_CHAT` message to the active tab's content script, which then opens
+ * the actual export modal on the page. That split keeps the popup simple and
+ * ensures the preview renders in a full-width layout rather than a tiny
+ * 300px-wide popup.
+ */
 const App: React.FC = () => {
+  /** Set to `true` after a successful export round-trip to show a hint. */
   const [hasData, setHasData] = useState<boolean>(false);
+  /** Error string shown inline if the content script couldn't export. */
   const [error, setError] = useState<string | null>(null);
 
   const handleExport = async () => {
     setError(null);
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      
+
       if (tab.id) {
+        // The content script handles the actual extraction + UI. We just
+        // need confirmation that it worked so the popup can show feedback.
         const response = await chrome.tabs.sendMessage(tab.id, { action: 'EXPORT_CHAT' });
         if (response && response.success) {
           setHasData(true);

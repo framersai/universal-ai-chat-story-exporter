@@ -1,24 +1,39 @@
 /**
  * Story card rendering + zip packaging.
  *
- * The card templates live at /cards/<card-name>/index.html (+ styles.css) and
- * are authored so they work standalone with live-server. At export time we
- * fetch the template, inline the stylesheet, replace {{tokens}}, render the
- * populated HTML inside an off-screen iframe, and capture the .card element
- * with html2canvas.
+ * The card templates live at `/cards/<card-name>/index.html` (+ `styles.css`)
+ * and are authored so they work standalone with live-server for design
+ * iteration. At export time we:
+ *  1. Fetch the template HTML and inline the stylesheet (so the rendered
+ *     iframe never needs a network round-trip).
+ *  2. Replace `{{token}}` placeholders with real data.
+ *  3. Drop the populated HTML into an off-screen iframe to get real browser
+ *     layout.
+ *  4. Capture the `.card` element with html2canvas into a PNG Blob.
+ *  5. Bundle the PNGs plus a `metadata.json` into a zip.
+ *
+ * The iframe approach (rather than rendering in-place on the host page) keeps
+ * the host's CSS from leaking into the card, and lets us use whatever
+ * dimensions the card template needs regardless of the current viewport.
  */
 
 import html2canvas from 'html2canvas';
 import JSZip from 'jszip';
 import type { AdventureMeta, CharacterMeta } from './metadata';
 
+/** Metadata for one card template. */
 export interface CardDef {
-  name: string; // folder name under /cards
+  /** Folder name under `/cards` that holds `index.html` + `styles.css`. */
+  name: string;
+  /** Card width in CSS pixels. Matches the `.card` rule in the template. */
   width: number;
+  /** Card height in CSS pixels. */
   height: number;
-  fileName: string; // export filename inside the zip
+  /** Filename to use for this card inside the exported zip. */
+  fileName: string;
 }
 
+/** Portrait card showing name, avatar, creator, description. */
 export const CHARACTER_PROFILE_CARD: CardDef = {
   name: 'character-profile',
   width: 720,
@@ -26,6 +41,7 @@ export const CHARACTER_PROFILE_CARD: CardDef = {
   fileName: '01-character-profile.png',
 };
 
+/** Portrait card showing a pair of chat messages. */
 export const CHAT_MESSAGE_CARD: CardDef = {
   name: 'chat-message',
   width: 720,
@@ -33,6 +49,7 @@ export const CHAT_MESSAGE_CARD: CardDef = {
   fileName: 'chat-message.png',
 };
 
+/** Landscape card showing an AI Dungeon action + narration pair. */
 export const ADVENTURE_STORY_CARD: CardDef = {
   name: 'adventure-story',
   width: 1280,
@@ -40,14 +57,18 @@ export const ADVENTURE_STORY_CARD: CardDef = {
   fileName: 'adventure-story.png',
 };
 
+/** Generic message shape consumed by every card renderer. */
 export interface ChatMessage {
   name?: string;
-  role: string; // 'user' | 'character' | 'unknown'
+  /** "user" | "character" | "unknown". */
+  role: string;
   text: string;
 }
 
+/** Hard cap on chat-message text so the bubble never overflows the card. */
 const MAX_MESSAGE_CHARS = 420;
 
+/** Replace `{{token}}` placeholders in `template` using keys from `data`. */
 function replaceTokens(template: string, data: Record<string, string>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => {
     const v = data[key];
@@ -55,6 +76,7 @@ function replaceTokens(template: string, data: Record<string, string>): string {
   });
 }
 
+/** Fetch a packaged resource (bundled in the extension) as plain text. */
 async function fetchText(path: string): Promise<string> {
   const res = await fetch(chrome.runtime.getURL(path));
   if (!res.ok) throw new Error(`Failed to load ${path}: ${res.status}`);
@@ -81,6 +103,11 @@ function fetchImageAsDataUrl(url: string): Promise<string> {
   });
 }
 
+/**
+ * Produce a fully-populated HTML document for a card: template + inlined
+ * styles + token substitution. Returned as a string suitable for
+ * `document.write` or `<iframe srcdoc>`.
+ */
 async function loadPopulatedTemplate(card: CardDef, data: Record<string, string>) {
   const [html, css] = await Promise.all([
     fetchText(`cards/${card.name}/index.html`),
@@ -122,6 +149,10 @@ const RENDER_NORMALIZATION_CSS = `<style>
   }
 </style>`;
 
+/**
+ * Attach an invisible, fixed-size iframe to the page for rendering.
+ * Positioned off-screen so the user never sees it.
+ */
 function createOffscreenIframe(width: number, height: number): HTMLIFrameElement {
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
@@ -140,6 +171,11 @@ function createOffscreenIframe(width: number, height: number): HTMLIFrameElement
   return iframe;
 }
 
+/**
+ * Resolve once every `<img>` in the iframe has either loaded or errored.
+ * html2canvas captures whatever is painted when called, so we wait first to
+ * avoid ghost-free cards with half-loaded avatars.
+ */
 function waitForImages(doc: Document): Promise<void> {
   const imgs = Array.from(doc.images);
   if (imgs.length === 0) return Promise.resolve();
@@ -222,6 +258,7 @@ export async function renderCardToBlob(
 
 // --- Chat message card helpers ---------------------------------------------
 
+/** Escape HTML-special characters so arbitrary message text can't inject markup. */
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -231,6 +268,7 @@ function escapeHtml(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/** Truncate to `max` chars with a trailing ellipsis. */
 function truncate(s: string, max = MAX_MESSAGE_CHARS): string {
   if (!s) return '';
   const trimmed = s.trim();
@@ -271,6 +309,7 @@ export function pairMessages(
   return pairs;
 }
 
+/** Token map consumed by the chat-message card template. */
 interface ChatCardTokenData extends Record<string, string> {
   characterName: string;
   characterAvatar: string;
@@ -280,6 +319,7 @@ interface ChatCardTokenData extends Record<string, string> {
   date: string;
 }
 
+/** Build the `{{token}}` map for one chat-message card. */
 function buildChatCardTokens(params: {
   meta: CharacterMeta;
   avatarDataUrl: string;
@@ -303,6 +343,7 @@ function buildChatCardTokens(params: {
 
 // --- Zip packaging ---------------------------------------------------------
 
+/** Build the `{{token}}` map for the character profile card. */
 const PROFILE_TOKENS = (meta: CharacterMeta, avatarDataUrl: string, date: string) => ({
   name: meta.name,
   creator: meta.creator ? `By @${meta.creator}` : '',
@@ -312,10 +353,22 @@ const PROFILE_TOKENS = (meta: CharacterMeta, avatarDataUrl: string, date: string
   date,
 });
 
+/** Pad a non-negative integer to two digits (e.g. `3` → `"03"`). */
 function pad2(n: number) {
   return String(n).padStart(2, '0');
 }
 
+/**
+ * Render all character.ai cards and bundle them into a zip.
+ *
+ * Layout of the returned zip:
+ *  - `01-character-profile.png`
+ *  - `02-chat-01.png`, `03-chat-02.png`, …  (one card per 2-message pair)
+ *  - `metadata.json`                       (the full character meta plus manifest)
+ *
+ * @param onProgress - Optional callback invoked after each card is rendered
+ *                     with `(done, total)` — used to drive a progress bar.
+ */
 export async function buildStoryCardsZip(
   meta: CharacterMeta,
   messages: ChatMessage[],
@@ -406,6 +459,7 @@ export async function buildChatPreviewSrcDoc(
   return loadPopulatedTemplate(CHAT_MESSAGE_CARD, tokens);
 }
 
+/** How many PNGs a character.ai export will produce (profile + pairs). */
 export function countCards(messages: ChatMessage[]): number {
   return 1 + pairMessages(messages).length;
 }
@@ -432,6 +486,7 @@ function adventureBubbleHtml(msg: ChatMessage): string {
   )}</div><div class="msg-text">${escapeAndBreak(text)}</div></div></div>`;
 }
 
+/** Token map consumed by the adventure-story card template. */
 interface AdventureCardTokenData extends Record<string, string> {
   adventureTitle: string;
   platform: string;
@@ -440,6 +495,7 @@ interface AdventureCardTokenData extends Record<string, string> {
   date: string;
 }
 
+/** Build the `{{token}}` map for one adventure-story card. */
 function buildAdventureCardTokens(params: {
   meta: AdventureMeta;
   date: string;
@@ -459,6 +515,12 @@ function buildAdventureCardTokens(params: {
   };
 }
 
+/**
+ * Render all AI Dungeon adventure cards and bundle them into a zip.
+ *
+ * Unlike the character.ai export there is no profile card — the adventure
+ * title/platform are drawn onto each chapter card instead.
+ */
 export async function buildAdventureStoryCardsZip(
   meta: AdventureMeta,
   messages: ChatMessage[],
@@ -501,6 +563,7 @@ export async function buildAdventureStoryCardsZip(
   return zip.generateAsync({ type: 'blob' });
 }
 
+/** HTML for the first adventure card — used in the modal preview. */
 export async function buildAdventurePreviewSrcDoc(
   meta: AdventureMeta,
   messages: ChatMessage[]
@@ -517,6 +580,7 @@ export async function buildAdventurePreviewSrcDoc(
   return loadPopulatedTemplate(ADVENTURE_STORY_CARD, tokens);
 }
 
+/** How many PNGs an AI Dungeon export will produce (one per message pair). */
 export function countAdventureCards(messages: ChatMessage[]): number {
   return pairMessages(messages).length;
 }
