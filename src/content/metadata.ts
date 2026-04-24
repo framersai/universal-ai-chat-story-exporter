@@ -62,6 +62,8 @@ export interface AdventureStoryCard {
   /** Card body text injected into context when the keys match. */
   value: string;
   description: string;
+  /** Whether the author marked this card as part of character creation. */
+  useForCharacterCreation: boolean;
 }
 
 /**
@@ -502,6 +504,7 @@ function buildAdventureStoryCards(adv: any): AdventureStoryCard[] {
     keys: toStr(c?.keys),
     value: toStr(c?.value),
     description: toStr(c?.description),
+    useForCharacterCreation: Boolean(c?.useForCharacterCreation),
   }));
 }
 

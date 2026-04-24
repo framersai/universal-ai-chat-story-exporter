@@ -19,7 +19,11 @@
 
 import html2canvas from 'html2canvas';
 import JSZip from 'jszip';
-import type { AdventureMeta, CharacterMeta } from './metadata';
+import type {
+  AdventureMeta,
+  AdventureStoryCard,
+  CharacterMeta,
+} from './metadata';
 
 /** Metadata for one card template. */
 export interface CardDef {
@@ -55,6 +59,18 @@ export const ADVENTURE_STORY_CARD: CardDef = {
   width: 1280,
   height: 720,
   fileName: 'adventure-story.png',
+};
+
+/**
+ * Portrait card showing one AI Dungeon "story card" (lore entry: location,
+ * character, faction, etc.). Rendered once per `AdventureStoryCard` and
+ * placed in a `story-cards/` subfolder inside the adventure zip.
+ */
+export const ADVENTURE_LORE_CARD: CardDef = {
+  name: 'adventure-lore',
+  width: 720,
+  height: 1000,
+  fileName: 'adventure-lore.png',
 };
 
 /** Generic message shape consumed by every card renderer. */
@@ -528,32 +544,45 @@ export async function buildAdventureStoryCardsZip(
 ): Promise<Blob> {
   const dateStr = `Exported ${new Date().toISOString().slice(0, 10)}`;
   const pairs = pairMessages(messages);
-  const total = pairs.length;
+  const loreCount = meta.storyCards?.length ?? 0;
+  const total = pairs.length + loreCount;
   let done = 0;
 
-  const blobs: Array<{ name: string; blob: Blob }> = [];
+  const chapterBlobs: Array<{ name: string; blob: Blob }> = [];
   for (let i = 0; i < pairs.length; i++) {
     const tokens = buildAdventureCardTokens({
       meta,
       date: dateStr,
       pair: pairs[i],
       index: i + 1,
-      total,
+      total: pairs.length,
     });
     const blob = await renderCardToBlob(ADVENTURE_STORY_CARD, tokens);
-    blobs.push({ name: `${pad2(i + 1)}-chapter-${pad2(i + 1)}.png`, blob });
+    chapterBlobs.push({ name: `${pad2(i + 1)}-chapter-${pad2(i + 1)}.png`, blob });
     onProgress?.(++done, total);
   }
 
+  // Render AI Dungeon "story cards" (lore entries) into their own subfolder.
+  const loreBlobs = await renderAdventureLoreBlobs(meta, dateStr, (lDone) => {
+    onProgress?.(pairs.length + lDone, total);
+  });
+
   const zip = new JSZip();
-  for (const { name, blob } of blobs) zip.file(name, blob);
+  for (const { name, blob } of chapterBlobs) zip.file(name, blob);
+  if (loreBlobs.length > 0) {
+    const folder = zip.folder('story-cards');
+    if (folder) {
+      for (const { name, blob } of loreBlobs) folder.file(name, blob);
+    }
+  }
   zip.file(
     'metadata.json',
     JSON.stringify(
       {
         adventure: meta,
         generatedAt: new Date().toISOString(),
-        cards: blobs.map((b) => b.name),
+        cards: chapterBlobs.map((b) => b.name),
+        storyCards: loreBlobs.map((b) => `story-cards/${b.name}`),
         messageCount: messages.length,
       },
       null,
@@ -578,6 +607,144 @@ export async function buildAdventurePreviewSrcDoc(
     total: pairs.length,
   });
   return loadPopulatedTemplate(ADVENTURE_STORY_CARD, tokens);
+}
+
+// --- Adventure lore cards (AI Dungeon "story cards") -----------------------
+
+const LORE_MAX_BODY_CHARS = 1200;
+
+/** Turn a display string into a filesystem-safe slug (lowercase, dashed, capped). */
+function slugify(s: string, max = 40): string {
+  return (
+    (s || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, max) || 'untitled'
+  );
+}
+
+/** Nicely format an AI Dungeon story-card type for display ("location" → "Location"). */
+function titleCaseType(type: string): string {
+  const t = (type || '').trim();
+  if (!t) return 'Entry';
+  return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
+}
+
+/**
+ * Split the comma/semicolon-separated `keys` field into individual trigger
+ * words, trimming whitespace and dropping blanks.
+ */
+function splitLoreKeys(raw: string): string[] {
+  return (raw || '')
+    .split(/[,;]+/)
+    .map((k) => k.trim())
+    .filter(Boolean);
+}
+
+/**
+ * AI Dungeon wraps story-card values in `{ … }` as world-info delimiters.
+ * Strip a balanced outer pair so the rendered card shows just the prose.
+ */
+function stripLoreBraces(raw: string): string {
+  const trimmed = (raw || '').trim();
+  if (trimmed.startsWith('{') && trimmed.endsWith('}') && trimmed.length >= 2) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+/** Token map consumed by the adventure-lore card template. */
+interface AdventureLoreTokenData extends Record<string, string> {
+  type: string;
+  title: string;
+  subtitle: string;
+  keysHtml: string;
+  value: string;
+  /** Full `<div>` for the "Used for Character Creation" pill, or '' to hide it. */
+  ccBadgeHtml: string;
+  adventureTitle: string;
+  platform: string;
+  date: string;
+}
+
+/** Build the `{{token}}` map for one adventure-lore card. */
+function buildAdventureLoreTokens(params: {
+  meta: AdventureMeta;
+  card: AdventureStoryCard;
+  date: string;
+}): AdventureLoreTokenData {
+  const { meta, card, date } = params;
+  const keys = splitLoreKeys(card.keys);
+  const keysHtml = keys.length
+    ? keys
+        .map((k) => `<span class="key-chip">${escapeHtml(k)}</span>`)
+        .join('')
+    : '<span class="key-chip" style="opacity:0.55">(no keys)</span>';
+  const value = truncate(stripLoreBraces(card.value), LORE_MAX_BODY_CHARS);
+  const ccBadgeHtml = card.useForCharacterCreation
+    ? '<div class="card-badge-cc">★ Used for Character Creation</div>'
+    : '';
+  return {
+    type: titleCaseType(card.type),
+    title: card.title || card.keys || 'Untitled',
+    // `description` is usually empty in real data — fall back to silence.
+    subtitle: (card.description || '').trim(),
+    keysHtml,
+    value: escapeAndBreak(value),
+    ccBadgeHtml,
+    adventureTitle: meta.title,
+    platform: meta.platform,
+    date,
+  };
+}
+
+/** How many lore PNGs an AI Dungeon adventure will produce. */
+export function countAdventureLoreCards(meta: AdventureMeta | null): number {
+  return meta?.storyCards?.length ?? 0;
+}
+
+/**
+ * Render every AI Dungeon "story card" (lore entry) in an adventure and
+ * package them into a zip. Intended to be awaited alongside
+ * `buildAdventureStoryCardsZip` when you want lore-only output; typically
+ * they're included inside the main adventure zip via `buildAdventureStoryCardsZip`.
+ */
+async function renderAdventureLoreBlobs(
+  meta: AdventureMeta,
+  dateStr: string,
+  onProgress?: (done: number, total: number) => void
+): Promise<Array<{ name: string; blob: Blob }>> {
+  const cards = meta.storyCards || [];
+  const out: Array<{ name: string; blob: Blob }> = [];
+  let done = 0;
+  for (let i = 0; i < cards.length; i++) {
+    const card = cards[i];
+    const tokens = buildAdventureLoreTokens({ meta, card, date: dateStr });
+    const blob = await renderCardToBlob(ADVENTURE_LORE_CARD, tokens);
+    const typeSlug = slugify(card.type || 'entry', 16);
+    const titleSlug = slugify(card.title || card.keys || `card-${i + 1}`, 40);
+    out.push({
+      name: `${pad2(i + 1)}-${typeSlug}-${titleSlug}.png`,
+      blob,
+    });
+    onProgress?.(++done, cards.length);
+  }
+  return out;
+}
+
+/** HTML for the first lore card — used in the modal preview. */
+export async function buildAdventureLorePreviewSrcDoc(
+  meta: AdventureMeta
+): Promise<string | null> {
+  const cards = meta.storyCards || [];
+  if (cards.length === 0) return null;
+  const tokens = buildAdventureLoreTokens({
+    meta,
+    card: cards[0],
+    date: `Exported ${new Date().toISOString().slice(0, 10)}`,
+  });
+  return loadPopulatedTemplate(ADVENTURE_LORE_CARD, tokens);
 }
 
 /** How many PNGs an AI Dungeon export will produce (one per message pair). */

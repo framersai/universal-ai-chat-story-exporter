@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Adventure Lore Card — Wilds AI</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div class="stage">
+  <article class="card" data-card="adventure-lore">
+    <div class="card-glow card-glow-a"></div>
+    <div class="card-glow card-glow-b"></div>
+    <div class="card-ornament card-ornament-tl"></div>
+    <div class="card-ornament card-ornament-br"></div>
+
+    <header class="card-top">
+      <div class="card-type">{{type}}</div>
+      <div class="card-platform">{{platform}}</div>
+    </header>
+
+    <div class="card-title-row">
+      <div class="card-title">{{title}}</div>
+      <div class="card-subtitle">{{subtitle}}</div>
+    </div>
+
+    <div class="card-rule"></div>
+
+    <div class="card-section">
+      <div class="card-section-label">Keys</div>
+      <div class="card-keys">{{keysHtml}}</div>
+    </div>
+
+    <div class="card-section-label">Lore</div>
+    <div class="card-body">
+      <div class="card-body-text">{{value}}</div>
+      {{ccBadgeHtml}}
+    </div>
+
+    <footer class="card-footer">
+      <div class="card-brand">
+        <span class="card-brand-mark">W</span>
+        <span class="card-brand-name">Wilds AI</span>
+      </div>
+      <div class="card-footer-meta">
+        <span class="card-adventure">{{adventureTitle}}</span>
+        <span>{{date}}</span>
+      </div>
+    </footer>
+  </article>
+</div>
+
+<script>
+  // Standalone preview fallback: when opened with live-server any unreplaced
+  // {{tokens}} are swapped for demo values. The extension pre-fills these
+  // before injection so this is a no-op at export time.
+  (function () {
+    var demo = {
+      type: "Location",
+      platform: "AI Dungeon",
+      title: "basement",
+      subtitle: "",
+      keysHtml: '<span class="key-chip">basement</span>',
+      value:
+        "The basement of Covenant House is full of defunct alchemical apparatus, broken orreries and bits of homunculi and magical constructs. It is home to Slop, the resident slime blob, who eats any organic trash thrown down the garbage chute. The basement contains a valve leading to the Guts network, hidden behind a broken magic mirror that only shows people fatter versions of themselves.",
+      ccBadgeHtml: '<div class="card-badge-cc">★ Used for Character Creation</div>',
+      adventureTitle: "The Whispering Citadel",
+      date: "Exported 2026-04-22",
+    };
+    document.documentElement.innerHTML = document.documentElement.innerHTML.replace(
+      /\{\{(\w+)\}\}/g,
+      function (_, key) {
+        return demo[key] != null ? demo[key] : "";
+      }
+    );
+  })();
+</script>
+
+</body>
+</html>

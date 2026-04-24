@@ -22,14 +22,17 @@ import {
   type CharacterMeta,
 } from './metadata';
 import {
+  ADVENTURE_LORE_CARD,
   ADVENTURE_STORY_CARD,
   CHARACTER_PROFILE_CARD,
+  buildAdventureLorePreviewSrcDoc,
   buildAdventurePreviewSrcDoc,
   buildAdventureStoryCardsZip,
   buildChatPreviewSrcDoc,
   buildProfilePreviewSrcDoc,
   buildStoryCardsZip,
   countAdventureCards,
+  countAdventureLoreCards,
   countCards,
   type ChatMessage,
 } from './story-cards';
@@ -511,43 +514,82 @@ function renderCharacterCardsPane(data: ExportPayload) {
   return wrap;
 }
 
-/** Story Cards pane for AI Dungeon: single landscape-card preview. */
+/** Story Cards pane for AI Dungeon: chapter preview + optional lore preview. */
 function renderAdventureCardsPane(data: ExportPayload) {
   const wrap = document.createElement('div');
   wrap.style.cssText = `display: flex; flex-direction: column; min-height: 0; flex: 1;`;
 
-  const total = countAdventureCards(data.messages as ChatMessage[]);
+  const chapterCount = countAdventureCards(data.messages as ChatMessage[]);
+  const loreCount = countAdventureLoreCards(data.adventureMeta);
 
   const header = document.createElement('div');
   header.style.cssText = `margin-bottom: 10px; font-size: 0.85rem; color: #6b7280;`;
-  header.textContent =
-    total === 0
-      ? 'No story messages found to export.'
-      : `${total} story ${total === 1 ? 'card' : 'cards'} (2 messages each).`;
+  if (chapterCount === 0 && loreCount === 0) {
+    header.textContent = 'No story messages or story cards found to export.';
+  } else {
+    const parts: string[] = [];
+    if (chapterCount > 0) {
+      parts.push(
+        `${chapterCount} chapter ${chapterCount === 1 ? 'card' : 'cards'} (2 messages each)`
+      );
+    }
+    if (loreCount > 0) {
+      parts.push(
+        `${loreCount} story ${loreCount === 1 ? 'card' : 'cards'} (lore entries)`
+      );
+    }
+    header.textContent = parts.join(' · ');
+  }
   wrap.appendChild(header);
+
+  // Render both previews at a shared display height so they sit on the same
+  // baseline even though one is landscape (chapter) and one is portrait (lore).
+  const PREVIEW_H = 260;
+  const chapterW = Math.round(
+    (ADVENTURE_STORY_CARD.width / ADVENTURE_STORY_CARD.height) * PREVIEW_H
+  );
+  const loreW = Math.round(
+    (ADVENTURE_LORE_CARD.width / ADVENTURE_LORE_CARD.height) * PREVIEW_H
+  );
 
   const previewShell = document.createElement('div');
   previewShell.style.cssText = `
-    flex: 1; min-height: 300px; max-height: 55vh; overflow: auto; border: 1px solid #e5e7eb;
-    border-radius: 10px; background: #0b0714; display: flex; justify-content: center;
-    padding: 16px;
+    flex: 0 0 auto; min-height: ${PREVIEW_H + 32}px; overflow-x: auto; overflow-y: hidden;
+    border: 1px solid #e5e7eb; border-radius: 10px; background: #0b0714;
+    display: flex; justify-content: ${loreCount > 0 ? 'flex-start' : 'center'};
+    align-items: center; gap: 16px; padding: 16px;
   `;
   const adventureFrame = makeScaledIframe(
     ADVENTURE_STORY_CARD.width,
     ADVENTURE_STORY_CARD.height,
-    640
+    chapterW
   );
+  adventureFrame.style.flex = '0 0 auto';
   previewShell.appendChild(adventureFrame);
+
+  const loreFrame =
+    loreCount > 0
+      ? makeScaledIframe(
+          ADVENTURE_LORE_CARD.width,
+          ADVENTURE_LORE_CARD.height,
+          loreW
+        )
+      : null;
+  if (loreFrame) {
+    loreFrame.style.flex = '0 0 auto';
+    previewShell.appendChild(loreFrame);
+  }
   wrap.appendChild(previewShell);
 
   const { footer, status } = makeFooter();
   const downloadZipBtn = document.createElement('button');
   downloadZipBtn.textContent = 'Download Story Cards (ZIP)';
   downloadZipBtn.style.cssText = primaryBtnStyle('#f59e0b');
-  downloadZipBtn.disabled = total === 0;
-  downloadZipBtn.style.opacity = total === 0 ? '0.5' : '1';
+  const hasAny = chapterCount > 0 || loreCount > 0;
+  downloadZipBtn.disabled = !hasAny;
+  downloadZipBtn.style.opacity = hasAny ? '1' : '0.5';
   downloadZipBtn.onclick = async () => {
-    if (!data.adventureMeta || total === 0) return;
+    if (!data.adventureMeta || !hasAny) return;
     const original = downloadZipBtn.textContent;
     downloadZipBtn.disabled = true;
     downloadZipBtn.style.opacity = '0.7';
@@ -585,6 +627,18 @@ function renderAdventureCardsPane(data: ExportPayload) {
       adventureFrame.remove();
     });
 
+  if (loreFrame) {
+    buildAdventureLorePreviewSrcDoc(data.adventureMeta!)
+      .then((html) => {
+        if (html) loreFrame.srcdoc = html;
+        else loreFrame.remove();
+      })
+      .catch((err) => {
+        console.error('adventure lore preview failed', err);
+        loreFrame.remove();
+      });
+  }
+
   return wrap;
 }
 
@@ -605,6 +659,58 @@ function makeFooter() {
 function primaryBtnStyle(color: string) {
   return `padding: 10px 16px; background: ${color}; color: white; border: none;
           border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.9rem;`;
+}
+
+/**
+ * Show a lightweight loading modal while we collect export data. Returns a
+ * `close` function the caller must invoke before rendering the real modal.
+ * Used because AI Dungeon's GraphQL fetch can take ~1–2 seconds and an
+ * immediate modal feels more responsive than a delayed one.
+ */
+function showLoadingModal(site: Site): () => void {
+  if (document.getElementById('cai-exporter-modal')) {
+    return () => {};
+  }
+
+  const overlay = document.createElement('div');
+  overlay.id = 'cai-exporter-overlay';
+  overlay.style.cssText = `position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 99999;`;
+
+  const modal = document.createElement('div');
+  modal.id = 'cai-exporter-modal';
+  modal.style.cssText = `
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 92%; max-width: 420px; background: white; border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.25); z-index: 100000;
+    padding: 28px 24px; font-family: sans-serif; color: #111827;
+    display: flex; flex-direction: column; align-items: center; gap: 16px;
+  `;
+
+  // Inject the spin keyframes once (idempotent) so the spinner rotates.
+  if (!document.getElementById('cai-exporter-keyframes')) {
+    const style = document.createElement('style');
+    style.id = 'cai-exporter-keyframes';
+    style.textContent = `@keyframes cai-spin { to { transform: rotate(360deg); } }`;
+    document.head.appendChild(style);
+  }
+
+  const label =
+    site === 'aidungeon' ? 'Fetching adventure…' : 'Reading chat…';
+
+  modal.innerHTML = `
+    <img src="${LOGO_URL}" style="width: 40px; height: 40px;" />
+    <div style="width: 36px; height: 36px; border: 3px solid #e5e7eb; border-top-color: #6366f1; border-radius: 50%; animation: cai-spin 0.8s linear infinite;"></div>
+    <div style="font-weight: 600; color: #111827;">${label}</div>
+    <div style="font-size: 0.85rem; color: #6b7280; text-align: center;">Preparing your export. This usually takes a moment.</div>
+  `;
+
+  document.body.appendChild(overlay);
+  document.body.appendChild(modal);
+
+  return () => {
+    modal.remove();
+    overlay.remove();
+  };
 }
 
 /**
@@ -629,19 +735,27 @@ function addFloatingButton() {
   btn.onmouseover = () => (btn.style.transform = 'scale(1.05)');
   btn.onmouseout = () => (btn.style.transform = 'scale(1)');
   btn.onclick = async () => {
-    const { messages, characterMeta, adventureMeta } = await collectExportData();
-    if (!messages || messages.length === 0) {
-      alert('No messages found to export.');
-      return;
+    const closeLoading = showLoadingModal(getSite());
+    try {
+      const { messages, characterMeta, adventureMeta } = await collectExportData();
+      closeLoading();
+      if (!messages || messages.length === 0) {
+        alert('No messages found to export.');
+        return;
+      }
+      showExportUI({
+        timestamp: new Date().toISOString(),
+        url: window.location.href,
+        site: getSite(),
+        messages,
+        characterMeta,
+        adventureMeta,
+      });
+    } catch (err) {
+      closeLoading();
+      console.error('Export failed', err);
+      alert('Export failed — check the console for details.');
     }
-    showExportUI({
-      timestamp: new Date().toISOString(),
-      url: window.location.href,
-      site: getSite(),
-      messages,
-      characterMeta,
-      adventureMeta,
-    });
   };
   document.body.appendChild(btn);
 }
@@ -680,21 +794,29 @@ handleUIVisibility();
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   if (request.action === 'EXPORT_CHAT') {
     (async () => {
-      const { messages, characterMeta, adventureMeta } = await collectExportData();
-      if (!messages || messages.length === 0) {
-        sendResponse({ success: false, error: 'No messages found.' });
-        return;
+      const closeLoading = showLoadingModal(getSite());
+      try {
+        const { messages, characterMeta, adventureMeta } = await collectExportData();
+        closeLoading();
+        if (!messages || messages.length === 0) {
+          sendResponse({ success: false, error: 'No messages found.' });
+          return;
+        }
+        const data: ExportPayload = {
+          timestamp: new Date().toISOString(),
+          url: window.location.href,
+          site: getSite(),
+          messages,
+          characterMeta,
+          adventureMeta,
+        };
+        sendResponse({ success: true, data });
+        showExportUI(data);
+      } catch (err) {
+        closeLoading();
+        console.error('Export failed', err);
+        sendResponse({ success: false, error: String((err as Error)?.message || err) });
       }
-      const data: ExportPayload = {
-        timestamp: new Date().toISOString(),
-        url: window.location.href,
-        site: getSite(),
-        messages,
-        characterMeta,
-        adventureMeta,
-      };
-      sendResponse({ success: true, data });
-      showExportUI(data);
     })();
   }
   return true;
