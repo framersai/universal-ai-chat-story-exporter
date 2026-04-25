@@ -108,7 +108,72 @@ Then open `chrome://extensions/`, enable **Developer mode**, click **Load unpack
 
 ## 🗂 Data Structure
 
-### Character.AI export
+Every export — Character.AI or AI Dungeon — is a single JSON object with the same top-level shape. The platform-specific fields live under `characterMeta` (Character.AI) or `adventureMeta` (AI Dungeon); the other is `null`.
+
+### Schema
+
+```ts
+interface Export {
+  /** ISO 8601 timestamp of when the export was generated. */
+  timestamp: string;
+  /** URL of the chat or adventure page the export was taken from. */
+  url: string;
+  /** Source platform. */
+  site: "character" | "aidungeon";
+  /** Ordered conversation/action log. */
+  messages: Array<{
+    name?: string;            // "You" for user, character name or "Story/AI" otherwise
+    role: "user" | "character";
+    text: string;
+  }>;
+  /** Present on Character.AI exports, otherwise null. */
+  characterMeta: CharacterMeta | null;
+  /** Present on AI Dungeon exports, otherwise null. */
+  adventureMeta: AdventureMeta | null;
+}
+
+interface CharacterMeta {
+  name: string;
+  title: string;
+  creator: string;             // raw username, no "By @" prefix
+  description: string;
+  greeting: string;
+  definition: string;          // empty unless info.has_definition is true
+  upvotes: number;
+  avatarUrl: string;
+  platform: "character.ai";
+  likes: number;               // parsed from the Like button (supports "1.7k", "7.3M")
+  interactions: number;
+  /** Remaining fields from the get_character_info API minus those promoted above. */
+  info: Record<string, unknown> | null;
+}
+
+interface AdventureMeta {
+  title: string;
+  platform: "AI Dungeon";
+  description: string;
+  image: string;               // cover image URL
+  memory: string;              // persistent memory prepended to every prompt
+  authorsNote: string;         // author's note appended to every prompt
+  author: string;
+  authorAvatar: string;
+  characterName: string;       // player's in-game character name
+  tags: string[];
+  storyCards: Array<{
+    id: string;
+    type: string;              // e.g. "location", "character", "faction"
+    title: string;
+    keys: string;              // comma-separated trigger keys
+    value: string;              // card body injected when keys match
+    description: string;
+    useForCharacterCreation: boolean;
+  }>;
+  /** Remaining GraphQL fields minus those promoted above. */
+  info: Record<string, unknown> | null;
+}
+```
+
+### Example: Character.AI export
 
 ```json
 {
@@ -146,7 +211,7 @@ Then open `chrome://extensions/`, enable **Developer mode**, click **Load unpack
 }
 ```
 
-### AI Dungeon export
+### Example: AI Dungeon export
 
 ```json
 {
@@ -192,8 +257,6 @@ Then open `chrome://extensions/`, enable **Developer mode**, click **Load unpack
   }
 }
 ```
-
-Both exports share a common top-level shape (`timestamp`, `url`, `site`, `messages`). The `characterMeta` field is present on Character.AI exports and `adventureMeta` on AI Dungeon exports.
 
 ## 🔒 Privacy
 
