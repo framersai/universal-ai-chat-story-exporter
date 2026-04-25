@@ -8,7 +8,9 @@
     "https://*.character.ai/*",
     "https://*.characterai.io/*",
     "https://play.aidungeon.com/*",
-    "https://api.aidungeon.com/*"
+    "https://api.aidungeon.com/*",
+    "https://janitorai.com/*",
+    "https://*.janitorai.com/*"
   ],
   "icons": {
     "16": "wilds-logo.png",
@@ -28,9 +30,16 @@
     {
       "matches": [
         "https://*.character.ai/*",
-        "https://play.aidungeon.com/*"
+        "https://play.aidungeon.com/*",
+        "https://janitorai.com/*"
       ],
       "js": ["content.js"]
+    },
+    {
+      "matches": ["https://janitorai.com/*"],
+      "js": ["janitor-monitor.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
     }
   ],
   "web_accessible_resources": [
@@ -42,7 +51,8 @@
       ],
       "matches": [
         "https://*.character.ai/*",
-        "https://play.aidungeon.com/*"
+        "https://play.aidungeon.com/*",
+        "https://janitorai.com/*"
       ]
     }
   ]

@@ -603,3 +603,186 @@ export async function extractAIDungeonAdventure(): Promise<AIDungeonAdventure | 
     messages: buildAdventureMessagesFromApi(adv),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Janitor AI
+// ---------------------------------------------------------------------------
+
+/**
+ * One Janitor chat message as returned by `/hampter/chats/:id` (and
+ * `/hampter/chats/:id/messages`). Only the fields we actually consume are
+ * typed; everything else is preserved as `unknown`.
+ */
+export interface JanitorRawMessage {
+  id: number;
+  chat_id: number;
+  message: string;
+  is_bot: boolean;
+  is_main: boolean;
+  created_at?: string;
+  metadata?: { persona_id?: string | null } | null;
+}
+
+/** One Janitor user-defined persona (the human side of a chat). */
+export interface JanitorPersona {
+  id: string;
+  name: string;
+  appearance?: string;
+  pronouns?: string | null;
+  is_default?: boolean;
+}
+
+/**
+ * Snapshot of all Janitor data we've sniffed for the current chat. Built up
+ * incrementally inside the content script as the page makes requests.
+ */
+export interface JanitorChatPayload {
+  /** Initial GET payload for /hampter/chats/:id (character + personas + first message). */
+  initial: any | null;
+  /** Accumulated, deduplicated raw messages observed so far (any source). */
+  messages: JanitorRawMessage[];
+}
+
+/** Janitor's avatar CDN base — character.avatar is just the bare filename. */
+const JANITOR_AVATAR_BASE = 'https://ella.janitorai.com/bot-avatars/';
+
+/**
+ * Strip HTML tags from a string and collapse whitespace. Janitor's character
+ * `description` is a chunk of HTML used for layout in their UI; for our
+ * card display we want clean prose, while the original markup is preserved
+ * under `info.descriptionHtml` for JSON consumers.
+ */
+function stripHtmlToText(html: string): string {
+  if (!html) return '';
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    // Insert a newline after each block-level break so paragraphs don't run
+    // together when collapsed.
+    doc.querySelectorAll('br, p, div, hr, h1, h2, h3, h4, h5, h6, li').forEach(
+      (el) => el.appendChild(doc.createTextNode('\n'))
+    );
+    const text = doc.body?.textContent || '';
+    return text
+      .split('\n')
+      .map((line) => line.replace(/\s+/g, ' ').trim())
+      .filter(Boolean)
+      .join('\n');
+  } catch {
+    return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+}
+
+/**
+ * Resolve a Janitor message's display name. Bot messages use the character's
+ * short name; user messages use the persona name when one is attached, else
+ * a generic "You".
+ */
+function janitorMessageName(
+  msg: JanitorRawMessage,
+  characterName: string,
+  personasById: Map<string, JanitorPersona>
+): string {
+  if (msg.is_bot) return characterName || 'Character';
+  const personaId = msg.metadata?.persona_id;
+  if (personaId) {
+    const p = personasById.get(personaId);
+    if (p?.name) return p.name;
+  }
+  return 'You';
+}
+
+/**
+ * Build a `CharacterMeta` for a Janitor chat from a captured `/hampter/chats/:id`
+ * response. Returns null if the payload is missing the character object.
+ */
+export function buildJanitorCharacterMeta(payload: any): CharacterMeta | null {
+  const character = payload?.character;
+  if (!character || typeof character !== 'object') return null;
+
+  const shortName = toStr(character.chat_name) || toStr(character.name);
+  const longTitle = toStr(character.name);
+  const descriptionHtml = toStr(character.description);
+  const description = stripHtmlToText(descriptionHtml);
+  const greeting = toStr(character.first_message);
+  const avatarFile = toStr(character.avatar);
+  const avatarUrl = avatarFile ? JANITOR_AVATAR_BASE + avatarFile : '';
+
+  if (!shortName && !avatarUrl) return null;
+
+  // Stash everything that doesn't have a top-level home under `info`, plus
+  // raw HTML and the alternate-greeting list which Janitor exposes on the
+  // character object.
+  const info: Record<string, unknown> = {
+    descriptionHtml,
+    alternateGreetings: Array.isArray(character.first_messages)
+      ? character.first_messages
+      : [],
+    is_nsfw: Boolean(character.is_nsfw),
+    is_image_nsfw: Boolean(character.is_image_nsfw),
+    is_public: Boolean(character.is_public),
+    character_id: toStr(character.id),
+    chat_id: payload?.chat?.id ?? null,
+    chat_created_at: toStr(payload?.chat?.created_at),
+    soundcloud_track_id: character.soundcloud_track_id ?? null,
+    allow_proxy: Boolean(character.allow_proxy),
+    personas: Array.isArray(payload?.personas) ? payload.personas : [],
+  };
+
+  return {
+    name: shortName,
+    // Use Janitor's long pitch line as the title only if it differs from the
+    // short name (otherwise duplicating "Ryuuko / Ryuuko" looks silly).
+    title: longTitle && longTitle !== shortName ? longTitle : '',
+    creator: '',
+    description,
+    greeting,
+    definition: '',
+    upvotes: 0,
+    avatarUrl,
+    platform: 'Janitor AI',
+    likes: 0,
+    interactions: 0,
+    info,
+  };
+}
+
+/**
+ * Map a list of accumulated Janitor raw messages onto our generic
+ * `AdventureMessage`-shaped objects. Sorted ascending by id (so chat order
+ * survives even if responses arrived out of order). `is_main: false` rows
+ * are kept — they represent visible swipes/branches the user actually saw.
+ */
+export function buildJanitorMessages(payload: {
+  initial: any | null;
+  messages: JanitorRawMessage[];
+}): AdventureMessage[] {
+  const character = payload.initial?.character;
+  const characterName = toStr(character?.chat_name) || toStr(character?.name) || 'Character';
+  const personas = Array.isArray(payload.initial?.personas)
+    ? (payload.initial.personas as JanitorPersona[])
+    : [];
+  const personasById = new Map<string, JanitorPersona>();
+  for (const p of personas) {
+    if (p?.id) personasById.set(p.id, p);
+  }
+
+  const sorted = [...payload.messages].sort((a, b) => {
+    const ai = Number(a?.id) || 0;
+    const bi = Number(b?.id) || 0;
+    return ai - bi;
+  });
+
+  const out: AdventureMessage[] = [];
+  for (const msg of sorted) {
+    const text = typeof msg?.message === 'string' ? msg.message : '';
+    if (!text.trim()) continue;
+    out.push({
+      id: String(msg.id),
+      name: janitorMessageName(msg, characterName, personasById),
+      role: msg.is_bot ? 'character' : 'user',
+      text,
+      createdAt: toStr(msg?.created_at),
+    });
+  }
+  return out;
+}

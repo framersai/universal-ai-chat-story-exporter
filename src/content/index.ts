@@ -14,12 +14,15 @@
  */
 
 import {
+  buildJanitorCharacterMeta,
+  buildJanitorMessages,
   extractAIDungeonAdventure,
   extractAdventureMetaAIDungeon,
   extractCharacterMetaCharacterAI,
   type AdventureMessage,
   type AdventureMeta,
   type CharacterMeta,
+  type JanitorRawMessage,
 } from './metadata';
 import {
   ADVENTURE_LORE_CARD,
@@ -42,13 +45,14 @@ console.log('Wilds AI Exporter: Content script loaded');
 const LOGO_URL = chrome.runtime.getURL('wilds-logo.svg');
 
 /** Supported host shorthand used throughout the content script. */
-type Site = 'character' | 'aidungeon' | null;
+type Site = 'character' | 'aidungeon' | 'janitor' | null;
 
 /** Identify the current host; returns `null` if we're on an unknown site. */
 function getSite(): Site {
   const host = window.location.hostname;
   if (host.includes('character.ai')) return 'character';
   if (host.includes('aidungeon.com')) return 'aidungeon';
+  if (host.includes('janitorai.com')) return 'janitor';
   return null;
 }
 
@@ -69,7 +73,120 @@ function isChatPage() {
     return /^\/adventure\/[a-zA-Z0-9_-]+\/.*\/play$/.test(path);
   }
 
+  if (site === 'janitor') {
+    return /^\/chats\/[a-zA-Z0-9-]+$/.test(path);
+  }
+
   return false;
+}
+
+/** Pull the chat id from /chats/:id on Janitor. Null if we're not on a chat. */
+function getJanitorChatId(): string | null {
+  if (getSite() !== 'janitor') return null;
+  const m = window.location.pathname.match(/^\/chats\/([a-zA-Z0-9-]+)$/);
+  return m ? m[1] : null;
+}
+
+// ---------------------------------------------------------------------------
+// Janitor AI: passive network capture
+// ---------------------------------------------------------------------------
+//
+// `janitor-monitor.js` runs in the page's MAIN world and forwards captured
+// fetch responses to us via window.postMessage. We accumulate them per chat
+// id so the export flow can read a complete payload synchronously.
+
+const JANITOR_MONITOR_TAG = 'wilds-janitor-monitor';
+
+interface JanitorChatCache {
+  initial: any | null;
+  messages: Map<number, JanitorRawMessage>;
+}
+
+const janitorCache = new Map<string, JanitorChatCache>();
+
+/** Get-or-create the cache slot for a given chat id. */
+function getJanitorCache(chatId: string): JanitorChatCache {
+  let entry = janitorCache.get(chatId);
+  if (!entry) {
+    entry = { initial: null, messages: new Map() };
+    janitorCache.set(chatId, entry);
+  }
+  return entry;
+}
+
+/**
+ * Merge any number of Janitor raw messages into the per-chat cache, keyed
+ * by id so re-emissions and the initial+POST overlap don't produce dupes.
+ */
+function ingestJanitorMessages(chatId: string, raw: unknown) {
+  if (!Array.isArray(raw)) return;
+  const cache = getJanitorCache(chatId);
+  for (const m of raw) {
+    if (m && typeof m === 'object' && typeof (m as any).id === 'number') {
+      cache.messages.set((m as JanitorRawMessage).id, m as JanitorRawMessage);
+    }
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('message', (ev: MessageEvent) => {
+    if (ev.source !== window) return;
+    const data = ev.data;
+    if (!data || data.source !== JANITOR_MONITOR_TAG) return;
+    const chatId = String(data.chatId || '');
+    if (!chatId) return;
+
+    if (data.kind === 'chat' && data.data) {
+      const cache = getJanitorCache(chatId);
+      cache.initial = data.data;
+      // The initial payload also embeds the first message(s); fold them in.
+      ingestJanitorMessages(chatId, data.data?.chatMessages);
+    } else if (data.kind === 'messages' && data.data) {
+      ingestJanitorMessages(chatId, data.data);
+    }
+  });
+}
+
+/**
+ * Ask the main-world monitor to actively re-fetch /hampter/chats/:id. Used
+ * as a cold-start path when the user installs the extension mid-session and
+ * we never observed the original GET. Resolves once the monitor reports
+ * back, or rejects after a timeout.
+ */
+function requestJanitorReplay(chatId: string, timeoutMs = 8000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const requestId = `r-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const onMessage = (ev: MessageEvent) => {
+      if (ev.source !== window) return;
+      const d = ev.data;
+      if (
+        !d ||
+        d.source !== JANITOR_MONITOR_TAG ||
+        d.kind !== 'replay-result' ||
+        d.requestId !== requestId
+      ) {
+        return;
+      }
+      window.removeEventListener('message', onMessage);
+      clearTimeout(timer);
+      if (d.ok) resolve();
+      else reject(new Error(d.error || 'Janitor replay failed'));
+    };
+    const timer = setTimeout(() => {
+      window.removeEventListener('message', onMessage);
+      reject(new Error('Janitor replay timed out'));
+    }, timeoutMs);
+    window.addEventListener('message', onMessage);
+    window.postMessage(
+      {
+        source: JANITOR_MONITOR_TAG,
+        kind: 'replay-request',
+        chatId,
+        requestId,
+      },
+      window.location.origin
+    );
+  });
 }
 
 /**
@@ -204,6 +321,31 @@ async function collectExportData(): Promise<{
       characterMeta: null,
       adventureMeta: extractAdventureMetaAIDungeon(),
     };
+  }
+
+  if (site === 'janitor') {
+    const chatId = getJanitorChatId();
+    if (!chatId) {
+      return { messages: [], characterMeta: null, adventureMeta: null };
+    }
+    let cache = getJanitorCache(chatId);
+    // Cold-start: nothing observed yet, ask the monitor to fetch live.
+    if (!cache.initial) {
+      try {
+        await requestJanitorReplay(chatId);
+      } catch (err) {
+        console.error('Wilds AI: Janitor replay failed', err);
+      }
+      cache = getJanitorCache(chatId);
+    }
+    const characterMeta = cache.initial
+      ? buildJanitorCharacterMeta(cache.initial)
+      : null;
+    const messages = buildJanitorMessages({
+      initial: cache.initial,
+      messages: Array.from(cache.messages.values()),
+    });
+    return { messages, characterMeta, adventureMeta: null };
   }
 
   return { messages: [], characterMeta: null, adventureMeta: null };
@@ -770,10 +912,19 @@ function addFloatingButton() {
  */
 function handleUIVisibility() {
   const isChat = isChatPage();
-  const hasMessages = !!(
-    document.getElementById('chat-messages') ||
-    document.getElementById('gameplay-output')
-  );
+  const site = getSite();
+  // For Character.AI / AI Dungeon we wait until the message container is
+  // actually painted so the button doesn't briefly flash on an empty shell.
+  // Janitor renders its chat through a virtualized component without a stable
+  // id we can latch onto; the URL pattern alone is enough since the network
+  // monitor is already running by the time the user can interact.
+  const hasMessages =
+    site === 'janitor'
+      ? true
+      : !!(
+          document.getElementById('chat-messages') ||
+          document.getElementById('gameplay-output')
+        );
   const existingBtn = document.getElementById('cai-exporter-btn');
 
   if (isChat && hasMessages) {
