@@ -26,7 +26,12 @@
 import { jsPDF } from 'jspdf';
 
 import type { AdventureMeta, CharacterMeta } from './metadata';
-import { CHARACTER_PROFILE_CARD, renderProfileCardAsBlob } from './story-cards';
+import {
+  ADVENTURE_LORE_CARD,
+  CHARACTER_PROFILE_CARD,
+  renderAdventureLoreCardsAsBlobs,
+  renderProfileCardAsBlob,
+} from './story-cards';
 
 interface PdfExportInput {
   timestamp: string;
@@ -55,6 +60,21 @@ const AVATAR_BOX = 120;
 /** Adventure cover banner box — AI Dungeon. */
 const BANNER_MAX_WIDTH = 480;
 const BANNER_MAX_HEIGHT = 160;
+/**
+ * Lore-card appendix sizing for AI Dungeon adventure exports.
+ * ADVENTURE_LORE_CARD is 720 × 1000 (portrait); we scale to ~220pt
+ * wide for ~306pt tall, leaving room for a heading + subtitle on
+ * the same page when there's vertical space, or a clean top-of-
+ * page placement when there isn't.
+ */
+const LORE_CARD_WIDTH = 220;
+const LORE_CARD_HEIGHT = Math.round(
+  LORE_CARD_WIDTH * (ADVENTURE_LORE_CARD.height / ADVENTURE_LORE_CARD.width)
+);
+/** Hard ceiling on appendix cards so the PDF doesn't balloon for
+ *  adventures with 30+ lore entries. Matches the renderAdventureLoreCardsAsBlobs
+ *  default. The remaining cards stay listed as text in the metadata block. */
+const LORE_APPENDIX_CAP = 6;
 /**
  * Tall profile-card portrait box — Character.AI / Janitor PDF
  * exports use this when html2canvas can render the full character
@@ -497,6 +517,43 @@ export async function renderPdfExport(data: PdfExportInput): Promise<Blob> {
   if (data.adventureMeta) drawAdventureMeta(ctx, data.adventureMeta);
 
   drawConversation(ctx, data.messages);
+
+  // AI Dungeon lore-card appendix (Loop 11). Renders up to
+  // LORE_APPENDIX_CAP storyCards via the existing
+  // ADVENTURE_LORE_CARD template and embeds each as a tall
+  // portrait image with a subtitle. Failure on any individual
+  // card is non-fatal — those cards stay listed as text in the
+  // earlier drawAdventureMeta block.
+  if (data.adventureMeta?.storyCards?.length) {
+    const blobs = await renderAdventureLoreCardsAsBlobs(data.adventureMeta, {
+      cap: LORE_APPENDIX_CAP,
+    });
+    if (blobs.length > 0) {
+      drawHeading(ctx, `Story cards (${blobs.length} of ${data.adventureMeta.storyCards.length})`);
+      drawDivider(ctx);
+      for (const card of blobs) {
+        const dataUrl = await blobToDataUrl(card.blob);
+        if (!dataUrl) continue;
+        drawSubheading(ctx, card.title);
+        ensureSpace(ctx, LORE_CARD_HEIGHT + SECTION_GAP);
+        const x = PAGE_MARGIN + (ctx.contentWidth - LORE_CARD_WIDTH) / 2;
+        try {
+          ctx.doc.addImage(dataUrl, 'PNG', x, ctx.y, LORE_CARD_WIDTH, LORE_CARD_HEIGHT);
+          advance(ctx, LORE_CARD_HEIGHT + SECTION_GAP);
+        } catch {
+          /* skip cards jspdf can't decode; the heading already
+             marks the slot in the document */
+        }
+      }
+      if (data.adventureMeta.storyCards.length > blobs.length) {
+        drawMetaLine(
+          ctx,
+          '…',
+          `${data.adventureMeta.storyCards.length - blobs.length} more story cards available in the .json export`,
+        );
+      }
+    }
+  }
 
   return ctx.doc.output('blob');
 }

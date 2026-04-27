@@ -12,7 +12,7 @@ ai, export ai conversations, ai chat to png, story cards, wilds ai exporter.
 > **Free Chrome extension to export, back up, and save your Character.AI chats, AI Dungeon adventures, and Janitor AI conversations as JSON, plain text, PDF, or beautiful PNG story cards. 100% local, privacy-first — nothing leaves your browser.**
 
 [![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-Install-4285F4?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/wilds-ai-universal-ai-cha/nblmojeghhciehfmjondiechgchfdfea)
-[![Version](https://img.shields.io/badge/version-0.5.0-blue)](./public/manifest.json)
+[![Version](https://img.shields.io/badge/version-0.6.0-blue)](./public/manifest.json)
 [![License](https://img.shields.io/badge/license-All%20rights%20reserved-lightgrey)](#-license)
 [![Made by Wilds AI](https://img.shields.io/badge/Made%20by-Wilds%20AI-6366f1)](https://wilds.ai)
 
@@ -61,7 +61,7 @@ If you've ever lost access to a Character.AI bot after a platform update, had an
 - **Four Output Formats** — Pick what fits the use case:
   - **JSON** (`.json`) — full-fidelity archive, easy to diff, re-import, or feed into other tools.
   - **Plain text** (`.txt`) — readable transcript with the same metadata block, designed to round-trip into wilds-ai or any text-based importer.
-  - **PDF** (`.pdf`) — multi-page document with selectable text and role-tinted headers, generated client-side via jsPDF. v0.5.0 renders the full character profile card (avatar + name + creator + bio + greeting) as the hero on Character.AI / Janitor AI exports; AI Dungeon exports get the adventure cover art as a banner. Falls back to a bare avatar / cover image if the card render or fetch fails.
+  - **PDF** (`.pdf`) — multi-page document with selectable text and role-tinted headers, generated client-side via jsPDF. v0.5.0 renders the full character profile card as the hero on Character.AI / Janitor AI exports; AI Dungeon exports get the adventure cover art as a banner. v0.6.0 adds an AI Dungeon story-card visual appendix at the end of the PDF — up to 6 lore cards rendered via the same template the Story Cards ZIP path uses.
   - **PNG story cards** (`.zip`) — shareable image cards for character profiles, chat highlights, and AI Dungeon world-info lore.
 - **Multi-Platform** — Works with [Character.AI](https://character.ai), [AI Dungeon](https://play.aidungeon.com), and [Janitor AI](https://janitorai.com) out of the box. More platforms coming.
 - **Rich Metadata Capture** — Name, description, greeting, creator, upvotes, likes, interactions for Character.AI; memory, author's note, tags, story cards (lore entries), author, and the full action log for AI Dungeon; character profile, alternate greetings, persona info, and the full message thread for Janitor AI.

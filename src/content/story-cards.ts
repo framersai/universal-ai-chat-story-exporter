@@ -730,6 +730,42 @@ export function countAdventureLoreCards(meta: AdventureMeta | null): number {
 }
 
 /**
+ * Render up to `cap` AI Dungeon story-card lore PNGs and return
+ * them paired with their titles. Used by the PDF exporter to
+ * include a visual lore appendix at the end of an adventure
+ * export. Cap defaults to 6 to bound html2canvas render time
+ * (~3-5s per card) and PDF size; `Math.min(cap, storyCards.length)`
+ * is the actual count.
+ *
+ * Returns an empty array on no metadata, no cards, or any
+ * unrecoverable render error — the PDF caller falls through to a
+ * text-only adventure section without the appendix.
+ */
+export async function renderAdventureLoreCardsAsBlobs(
+  meta: AdventureMeta | null,
+  options: { cap?: number } = {}
+): Promise<Array<{ title: string; blob: Blob }>> {
+  if (!meta?.storyCards?.length) return [];
+  const cap = options.cap ?? 6;
+  const cards = meta.storyCards.slice(0, cap);
+  const dateStr = `Exported ${new Date().toISOString().slice(0, 10)}`;
+  const results: Array<{ title: string; blob: Blob }> = [];
+  for (const card of cards) {
+    try {
+      const tokens = buildAdventureLoreTokens({ meta, card, date: dateStr });
+      const blob = await renderCardToBlob(ADVENTURE_LORE_CARD, tokens);
+      const title = card.title || card.keys || `${card.type || 'entry'}`;
+      results.push({ title, blob });
+    } catch {
+      // Per-card failure is non-fatal — keep going with the rest.
+      // The caller falls through to text-only for cards that didn't
+      // render successfully.
+    }
+  }
+  return results;
+}
+
+/**
  * Render every AI Dungeon "story card" (lore entry) in an adventure and
  * package them into a zip. Intended to be awaited alongside
  * `buildAdventureStoryCardsZip` when you want lore-only output; typically
