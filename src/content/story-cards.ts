@@ -369,6 +369,31 @@ const PROFILE_TOKENS = (meta: CharacterMeta, avatarDataUrl: string, date: string
   date,
 });
 
+/**
+ * Render the standalone character profile card to a PNG `Blob` using
+ * the same template the Story Cards ZIP path uses. Exported so the
+ * PDF renderer can embed it inline as a hero image, giving the PDF a
+ * richer first-page presentation than the bare avatar fetch from
+ * v0.4.0 (Loop 4 in the wilds-ai monorepo session).
+ *
+ * Resolves to `null` rather than throwing on any rendering failure
+ * (avatar fetch, html2canvas error, missing template fragment) so
+ * the caller can fall through to a text-only PDF instead of a
+ * broken export.
+ */
+export async function renderProfileCardAsBlob(meta: CharacterMeta): Promise<Blob | null> {
+  try {
+    const avatarDataUrl = await fetchImageAsDataUrl(meta.avatarUrl);
+    const dateStr = `Exported ${new Date().toISOString().slice(0, 10)}`;
+    return await renderCardToBlob(
+      CHARACTER_PROFILE_CARD,
+      PROFILE_TOKENS(meta, avatarDataUrl, dateStr)
+    );
+  } catch {
+    return null;
+  }
+}
+
 /** Pad a non-negative integer to two digits (e.g. `3` → `"03"`). */
 function pad2(n: number) {
   return String(n).padStart(2, '0');

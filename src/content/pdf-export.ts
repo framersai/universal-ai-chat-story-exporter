@@ -26,6 +26,7 @@
 import { jsPDF } from 'jspdf';
 
 import type { AdventureMeta, CharacterMeta } from './metadata';
+import { CHARACTER_PROFILE_CARD, renderProfileCardAsBlob } from './story-cards';
 
 interface PdfExportInput {
   timestamp: string;
@@ -54,6 +55,18 @@ const AVATAR_BOX = 120;
 /** Adventure cover banner box — AI Dungeon. */
 const BANNER_MAX_WIDTH = 480;
 const BANNER_MAX_HEIGHT = 160;
+/**
+ * Tall profile-card portrait box — Character.AI / Janitor PDF
+ * exports use this when html2canvas can render the full character
+ * profile card (avatar + name + bio + greeting + creator) in time.
+ * Keeps aspect ratio of CHARACTER_PROFILE_CARD's 600 × 900
+ * native size; clamps width to keep ~250pt of vertical space free
+ * for the title + metadata block on letter paper.
+ */
+const PROFILE_CARD_WIDTH = 180;
+const PROFILE_CARD_HEIGHT = Math.round(
+  PROFILE_CARD_WIDTH * (CHARACTER_PROFILE_CARD.height / CHARACTER_PROFILE_CARD.width)
+);
 
 /**
  * Fetch a remote image URL and return its body as a data URL plus a
@@ -110,6 +123,21 @@ async function fetchImageAsDataUrl(url: string): Promise<
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Convert a `Blob` (typically a PNG produced by `renderCardToBlob`)
+ * to a data URL the jspdf `addImage` API consumes. Returns `null`
+ * on FileReader failure so the PDF render falls back to the bare
+ * avatar fetch path instead of breaking.
+ */
+async function blobToDataUrl(blob: Blob): Promise<string | null> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(blob);
+  });
 }
 
 /**
@@ -378,13 +406,16 @@ function drawHero(
   ctx: LayoutCtx,
   dataUrl: string,
   format: 'PNG' | 'JPEG',
-  kind: 'avatar' | 'banner'
+  kind: 'avatar' | 'banner' | 'profile-card'
 ) {
   let drawWidth: number;
   let drawHeight: number;
   if (kind === 'avatar') {
     drawWidth = AVATAR_BOX;
     drawHeight = AVATAR_BOX;
+  } else if (kind === 'profile-card') {
+    drawWidth = PROFILE_CARD_WIDTH;
+    drawHeight = PROFILE_CARD_HEIGHT;
   } else {
     drawWidth = BANNER_MAX_WIDTH;
     drawHeight = BANNER_MAX_HEIGHT;
@@ -421,16 +452,39 @@ export async function renderPdfExport(data: PdfExportInput): Promise<Blob> {
     data.adventureMeta?.title ||
     'Wilds AI Export';
 
-  // Hero image (best-effort): character avatar or adventure cover.
-  // Drawn before the title so the visual hierarchy reads
-  //   [hero image] → [title] → [metadata] → [conversation].
-  const heroUrl =
-    data.characterMeta?.avatarUrl || data.adventureMeta?.image || '';
-  const heroKind: 'avatar' | 'banner' = data.adventureMeta ? 'banner' : 'avatar';
-  if (heroUrl) {
-    const fetched = await fetchImageAsDataUrl(heroUrl);
-    if (fetched) {
-      drawHero(ctx, fetched.dataUrl, fetched.format, heroKind);
+  // Hero (best-effort, three-tier fallback for character / janitor;
+  // single-tier fetch for AI Dungeon):
+  //
+  //   1. Character.AI / Janitor → render the full profile card via
+  //      html2canvas (avatar + name + creator + description +
+  //      greeting). Visually richer than a bare avatar — the same
+  //      treatment users get from the Story Cards ZIP path.
+  //   2. If the card render fails, fall back to v0.4.0's bare
+  //      avatar fetch (smaller, square hero).
+  //   3. AI Dungeon → cover-image fetch as the wide banner. The
+  //      adventure card would also work via renderCardToBlob, but
+  //      adventures already publish a cover image we can embed
+  //      directly without the html2canvas round-trip.
+  let heroDrawn = false;
+  if (data.characterMeta) {
+    const cardBlob = await renderProfileCardAsBlob(data.characterMeta);
+    if (cardBlob) {
+      const dataUrl = await blobToDataUrl(cardBlob);
+      if (dataUrl) {
+        drawHero(ctx, dataUrl, 'PNG', 'profile-card');
+        heroDrawn = true;
+      }
+    }
+  }
+  if (!heroDrawn) {
+    const heroUrl =
+      data.characterMeta?.avatarUrl || data.adventureMeta?.image || '';
+    const heroKind: 'avatar' | 'banner' = data.adventureMeta ? 'banner' : 'avatar';
+    if (heroUrl) {
+      const fetched = await fetchImageAsDataUrl(heroUrl);
+      if (fetched) {
+        drawHero(ctx, fetched.dataUrl, fetched.format, heroKind);
+      }
     }
   }
 
