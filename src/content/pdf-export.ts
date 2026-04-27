@@ -66,12 +66,23 @@ const BANNER_MAX_HEIGHT = 160;
  * `files.aidungeon.com`) is publicly accessible and we don't want
  * to leak the user's session into a CDN's logs.
  */
+/** Hard ceiling on the hero-image fetch so a slow CDN can't stall
+ *  the export. 8s is well past p99 for any of the public image
+ *  hosts we hero-embed (character.ai, ella.janitorai.com,
+ *  files.aidungeon.com). */
+const HERO_FETCH_TIMEOUT_MS = 8000;
+
 async function fetchImageAsDataUrl(url: string): Promise<
   { dataUrl: string; format: 'PNG' | 'JPEG' } | null
 > {
   if (!url || !/^https?:\/\//.test(url)) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), HERO_FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(url, { credentials: 'omit' });
+    const res = await fetch(url, {
+      credentials: 'omit',
+      signal: controller.signal,
+    });
     if (!res.ok) return null;
     const contentType = (res.headers.get('content-type') || '').toLowerCase();
     let format: 'PNG' | 'JPEG' | null = null;
@@ -80,8 +91,8 @@ async function fetchImageAsDataUrl(url: string): Promise<
     else if (contentType.includes('webp')) {
       // jspdf builds since 2.5 accept webp via the JPEG path on
       // most browsers. Try it; if it errors during addImage the
-      // outer catch in `renderPdfExport` swallows it and the PDF
-      // ships text-only.
+      // outer catch in `drawHero` swallows it and the PDF ships
+      // text-only.
       format = 'JPEG';
     }
     if (!format) return null;
@@ -96,6 +107,8 @@ async function fetchImageAsDataUrl(url: string): Promise<
     return { dataUrl, format };
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
