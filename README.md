@@ -11,7 +11,7 @@ ai, export ai conversations, ai chat to png, story cards, wilds ai exporter.
 
 > **Free Chrome extension to export, back up, and save your Character.AI chats, AI Dungeon adventures, and Janitor AI conversations as JSON, plain text, PDF, or beautiful PNG story cards. 100% local, privacy-first — nothing leaves your browser.**
 
-[![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-Install-4285F4?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/)
+[![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-Install-4285F4?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/wilds-ai-universal-ai-cha/nblmojeghhciehfmjondiechgchfdfea)
 [![Version](https://img.shields.io/badge/version-0.3.0-blue)](./public/manifest.json)
 [![License](https://img.shields.io/badge/license-All%20rights%20reserved-lightgrey)](#-license)
 [![Made by Wilds AI](https://img.shields.io/badge/Made%20by-Wilds%20AI-6366f1)](https://wilds.ai)
@@ -81,7 +81,7 @@ If you've ever lost access to a Character.AI bot after a platform update, had an
 
 ### Chrome Web Store (recommended)
 
-Install [Wilds AI Exporter](https://chromewebstore.google.com/) from the Chrome Web Store — one click, auto-updating.
+Install [Wilds AI Exporter](https://chromewebstore.google.com/detail/wilds-ai-universal-ai-cha/nblmojeghhciehfmjondiechgchfdfea) from the Chrome Web Store — one click, auto-updating.
 
 ### From Source (for developers)
 
