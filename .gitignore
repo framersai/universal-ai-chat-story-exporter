@@ -27,4 +27,6 @@ dist-ssr
 *.crx
 *.pem
 dist.zip
+wilds-ai-exporter-*.zip
+RELEASE_NOTES_*.md
 .claude
