@@ -1,0 +1,80 @@
+name: Release
+
+# Fires when a v*.*.* tag is pushed. Builds the extension fresh from
+# that tag, verifies the manifest version matches the tag, zips the
+# dist/ directory, and publishes a GitHub Release with the zip
+# attached. The same artifact gets manually uploaded to the Chrome
+# Web Store (Web Store API auto-publish requires Google Cloud OAuth
+# credentials — set up separately if/when wanted).
+#
+# To cut a release:
+#   1. Bump the version in package.json + public/manifest.json + README badge.
+#   2. git commit + git push (master).
+#   3. git tag -a v0.X.0 -m "..."  &&  git push origin v0.X.0
+#   4. This workflow runs, the GitHub Release appears with the zip.
+#   5. Drag the zip into the Chrome Web Store Developer Dashboard.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  # Needed for softprops/action-gh-release to create the release.
+  # Uses the auto-provisioned GITHUB_TOKEN — no PAT required.
+  contents: write
+
+jobs:
+  release:
+    name: Build + publish GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20 (npm cache)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build extension (tsc + Vite popup + Vite content)
+        run: npm run build
+
+      - name: Verify manifest version matches tag
+        run: |
+          set -euo pipefail
+          MANIFEST_VERSION=$(node -p "require('./dist/manifest.json').version")
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$MANIFEST_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::manifest version $MANIFEST_VERSION does not match tag $TAG_VERSION"
+            exit 1
+          fi
+          echo "manifest version $MANIFEST_VERSION matches tag $TAG_VERSION"
+
+      - name: Create release zip
+        run: |
+          set -euo pipefail
+          ZIP_NAME="wilds-ai-exporter-${GITHUB_REF_NAME}.zip"
+          # Zip from inside dist/ so the archive expands flat (manifest.json
+          # at the root of the zip, which is what chrome://extensions and
+          # the Chrome Web Store both expect).
+          (cd dist && zip -r "../${ZIP_NAME}" . -x "*.DS_Store")
+          ls -lh "${ZIP_NAME}"
+          # Surface the path for the next step.
+          echo "ZIP_NAME=${ZIP_NAME}" >> "$GITHUB_ENV"
+
+      - name: Publish GitHub Release
+        # Pinned by major. softprops/action-gh-release auto-creates the
+        # release on the pushed tag, attaches files, and drafts a
+        # changelog from commits since the previous tag. Edit the
+        # release on GitHub afterward to add custom prose if wanted.
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP_NAME }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
