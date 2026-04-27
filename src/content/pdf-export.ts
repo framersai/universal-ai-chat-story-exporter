@@ -71,10 +71,15 @@ const LORE_CARD_WIDTH = 220;
 const LORE_CARD_HEIGHT = Math.round(
   LORE_CARD_WIDTH * (ADVENTURE_LORE_CARD.height / ADVENTURE_LORE_CARD.width)
 );
-/** Hard ceiling on appendix cards so the PDF doesn't balloon for
+/** Default ceiling on appendix cards so the PDF doesn't balloon for
  *  adventures with 30+ lore entries. Matches the renderAdventureLoreCardsAsBlobs
- *  default. The remaining cards stay listed as text in the metadata block. */
+ *  default. The remaining cards stay listed as text in the metadata block.
+ *  Overridable per-call via `renderPdfExport(data, { loreCardCap })` from the UI. */
 const LORE_APPENDIX_CAP = 6;
+/** Hard upper bound the UI control + caller can request. ~20 portrait cards
+ *  is the point where the PDF starts taking noticeable seconds to render
+ *  via html2canvas without delivering meaningfully more reader value. */
+const LORE_APPENDIX_CAP_MAX = 20;
 /**
  * Tall profile-card portrait box — Character.AI / Janitor PDF
  * exports use this when html2canvas can render the full character
@@ -464,8 +469,24 @@ function drawHero(
  * (character avatar or adventure cover) when one is available.
  * Image fetch failure is non-fatal — the PDF still ships with
  * the rest of the content.
+ *
+ * @param options.loreCardCap For AI Dungeon adventure exports, the
+ *   max number of story cards to embed as portrait images in the
+ *   appendix. The PDF tab in the export modal exposes this so heavy
+ *   lore adventures can opt into more cards (up to LORE_APPENDIX_CAP_MAX).
+ *   Defaults to LORE_APPENDIX_CAP. Values are clamped to
+ *   [0, LORE_APPENDIX_CAP_MAX]; non-finite or negative inputs fall
+ *   back to the default.
  */
-export async function renderPdfExport(data: PdfExportInput): Promise<Blob> {
+export async function renderPdfExport(
+  data: PdfExportInput,
+  options: { loreCardCap?: number } = {}
+): Promise<Blob> {
+  const requestedCap = options.loreCardCap;
+  const loreCardCap =
+    typeof requestedCap === 'number' && Number.isFinite(requestedCap)
+      ? Math.max(0, Math.min(LORE_APPENDIX_CAP_MAX, Math.floor(requestedCap)))
+      : LORE_APPENDIX_CAP;
   const ctx = makeCtx();
   const title =
     data.characterMeta?.name ||
@@ -524,9 +545,9 @@ export async function renderPdfExport(data: PdfExportInput): Promise<Blob> {
   // portrait image with a subtitle. Failure on any individual
   // card is non-fatal — those cards stay listed as text in the
   // earlier drawAdventureMeta block.
-  if (data.adventureMeta?.storyCards?.length) {
+  if (data.adventureMeta?.storyCards?.length && loreCardCap > 0) {
     const blobs = await renderAdventureLoreCardsAsBlobs(data.adventureMeta, {
-      cap: LORE_APPENDIX_CAP,
+      cap: loreCardCap,
     });
     if (blobs.length > 0) {
       drawHeading(ctx, `Story cards (${blobs.length} of ${data.adventureMeta.storyCards.length})`);

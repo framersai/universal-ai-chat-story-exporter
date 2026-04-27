@@ -658,6 +658,47 @@ function renderPdfPane(data: ExportPayload) {
   `;
   wrap.appendChild(summary);
 
+  // Lore-card cap control. AI Dungeon adventures with many story
+  // cards render slowly (each card is an html2canvas pass) and can
+  // bloat the PDF; let the user dial down or up. Hidden when the
+  // export carries no story cards. Default 6, capped at 20 — matches
+  // LORE_APPENDIX_CAP_MAX in pdf-export.ts. Reading the input at
+  // click time keeps "edit then click Download" feeling native.
+  const storyCardCount = data.adventureMeta?.storyCards?.length ?? 0;
+  let loreCapInput: HTMLInputElement | null = null;
+  if (storyCardCount > 0) {
+    const capRow = document.createElement('div');
+    capRow.style.cssText = `
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 14px; background: #fffbeb;
+      border: 1px solid #fde68a; border-radius: 8px;
+      color: #78350f; font-size: 0.88rem;
+    `;
+    const capLabel = document.createElement('label');
+    capLabel.style.cssText = `display: flex; align-items: center; gap: 8px; flex: 1;`;
+    capLabel.textContent = 'Story cards to embed as portraits:';
+
+    loreCapInput = document.createElement('input');
+    loreCapInput.type = 'number';
+    loreCapInput.min = '0';
+    loreCapInput.max = '20';
+    loreCapInput.step = '1';
+    loreCapInput.value = String(Math.min(6, storyCardCount));
+    loreCapInput.style.cssText = `
+      width: 64px; padding: 4px 8px; border: 1px solid #fcd34d;
+      border-radius: 4px; font-size: 0.92rem; background: #fff;
+    `;
+    capLabel.appendChild(loreCapInput);
+
+    const capHint = document.createElement('span');
+    capHint.style.cssText = `font-size: 0.78rem; color: #92400e;`;
+    capHint.textContent = `(0–20, this adventure has ${storyCardCount})`;
+
+    capRow.appendChild(capLabel);
+    capRow.appendChild(capHint);
+    wrap.appendChild(capRow);
+  }
+
   const footer = document.createElement('div');
   footer.style.cssText = `display: flex; gap: 10px; justify-content: flex-end; align-items: center;`;
   const status = document.createElement('span');
@@ -677,7 +718,12 @@ function renderPdfPane(data: ExportPayload) {
       // fetches the character avatar / adventure cover image and
       // embeds it as a hero at the top of the PDF. Image fetch
       // failure is non-fatal (text-only fallback).
-      const blob = await renderPdfExport(data);
+      const rawCap = loreCapInput?.value;
+      const parsedCap =
+        rawCap !== undefined && rawCap !== '' ? Number(rawCap) : undefined;
+      const blob = await renderPdfExport(data, {
+        loreCardCap: parsedCap,
+      });
       const slug = sanitize(
         data.characterMeta?.name || data.adventureMeta?.title || 'export'
       );
