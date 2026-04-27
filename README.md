@@ -9,10 +9,10 @@ ai, export ai conversations, ai chat to png, story cards, wilds ai exporter.
 
 # Wilds AI Exporter — Export Character.AI, AI Dungeon & Janitor AI Chats
 
-> **Free Chrome extension to export, back up, and save your Character.AI chats, AI Dungeon adventures, and Janitor AI conversations as JSON or beautiful PNG story cards. 100% local, privacy-first — nothing leaves your browser.**
+> **Free Chrome extension to export, back up, and save your Character.AI chats, AI Dungeon adventures, and Janitor AI conversations as JSON, plain text, PDF, or beautiful PNG story cards. 100% local, privacy-first — nothing leaves your browser.**
 
 [![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-Install-4285F4?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/)
-[![Version](https://img.shields.io/badge/version-0.2.0-blue)](./public/manifest.json)
+[![Version](https://img.shields.io/badge/version-0.3.0-blue)](./public/manifest.json)
 [![License](https://img.shields.io/badge/license-All%20rights%20reserved-lightgrey)](#-license)
 [![Made by Wilds AI](https://img.shields.io/badge/Made%20by-Wilds%20AI-6366f1)](https://wilds.ai)
 
@@ -58,12 +58,16 @@ If you've ever lost access to a Character.AI bot after a platform update, had an
 ## ✨ Features
 
 - **One-Click Export** — A floating button appears on any chat or adventure page. Click once to extract everything.
-- **Beautiful PNG Story Cards** — Render chats and character profiles as shareable PNG cards (profile + paired message cards), plus AI Dungeon world-info lore cards, all bundled into a zip.
+- **Four Output Formats** — Pick what fits the use case:
+  - **JSON** (`.json`) — full-fidelity archive, easy to diff, re-import, or feed into other tools.
+  - **Plain text** (`.txt`) — readable transcript with the same metadata block, designed to round-trip into wilds-ai or any text-based importer.
+  - **PDF** (`.pdf`) — multi-page document with selectable text and role-tinted headers, generated client-side via jsPDF.
+  - **PNG story cards** (`.zip`) — shareable image cards for character profiles, chat highlights, and AI Dungeon world-info lore.
 - **Multi-Platform** — Works with [Character.AI](https://character.ai), [AI Dungeon](https://play.aidungeon.com), and [Janitor AI](https://janitorai.com) out of the box. More platforms coming.
 - **Rich Metadata Capture** — Name, description, greeting, creator, upvotes, likes, interactions for Character.AI; memory, author's note, tags, story cards (lore entries), author, and the full action log for AI Dungeon; character profile, alternate greetings, persona info, and the full message thread for Janitor AI.
-- **Instant In-Page Preview** — Review the JSON or rendered PNG cards before you save them.
+- **Instant In-Page Preview** — Review the JSON, plain-text, or rendered PNG cards before you save them.
 - **Private by Design** — All processing happens locally in your browser. Zero analytics, zero servers, zero data leaves your machine.
-- **Open Format** — Human-readable JSON (`.json`) — easy to diff, archive, re-import, or feed back into other tools.
+- **Open Format** — Every format is documented and importable: JSON for programmatic access, plain text for human reading, PDF for printing or sharing, PNG cards for social media.
 
 ## 🚀 Supported Platforms
 
@@ -94,10 +98,11 @@ Then open `chrome://extensions/`, enable **Developer mode**, click **Load unpack
 
 1. Open any chat on **Character.AI**, any adventure on **AI Dungeon**, or any chat on **Janitor AI** (`janitorai.com/chats/:id`).
 2. Click the **Export Chat** / **Export Adventure** button in the bottom-right corner.
-3. Preview your export, then:
-   - **Copy JSON** to your clipboard, or
-   - **Download JSON** as a `.json` file, or
-   - **Download Story Cards (ZIP)** — a pack of shareable PNG cards.
+3. Preview your export, then choose a format:
+   - **JSON** — Copy to clipboard or download as `.json`.
+   - **Text** — Preview the plain-text transcript, copy to clipboard, or download as `.txt`.
+   - **PDF** — Download a multi-page `.pdf` with selectable text and role-tinted headers.
+   - **Story Cards** — Download a ZIP of shareable PNG cards.
 
 > **Note for Janitor AI:** the very first time you export a freshly-loaded chat, send any message in the chat first (or wait for the page to refresh) so the extension can capture your auth token. After that, exports work instantly. The extension never makes outbound requests on your behalf — it only re-uses the same authenticated request your browser already issues.
 
@@ -361,7 +366,12 @@ No. All extraction and rendering runs locally in your browser. Your conversation
 
 ### What format are the exports?
 
-Portable JSON (`.json`) — human-readable and easy to archive or feed into other tools — or a ZIP of PNG story cards for sharing on social media.
+Four formats, picked per export from the modal:
+
+- **`.json`** — full-fidelity, machine-readable archive (the canonical re-import format for wilds-ai).
+- **`.txt`** — plain-text transcript with the same metadata header, easy for humans to read or paste into another tool.
+- **`.pdf`** — multi-page document with selectable text, role-tinted headers, and a metadata cover block.
+- **`.zip`** of PNG story cards — for sharing chat highlights or character profiles on social media.
 
 ### Will this delete or modify my chats?
 

@@ -39,6 +39,8 @@ import {
   countCards,
   type ChatMessage,
 } from './story-cards';
+import { renderTextExport } from './text-export';
+import { renderPdfExport } from './pdf-export';
 
 console.log('Wilds AI Exporter: Content script loaded');
 
@@ -436,20 +438,27 @@ function showExportUI(data: ExportPayload) {
   header.appendChild(closeBtn);
   modal.appendChild(header);
 
-  // Tab bar
+  // Tab bar — JSON, Text, PDF, Story Cards. Default depends on
+  // whether we have character/adventure metadata (Story Cards is the
+  // most engaging starting point in that case).
   const tabs = document.createElement('div');
-  tabs.style.cssText = `display: flex; gap: 6px; border-bottom: 1px solid #e5e7eb; margin-bottom: 14px;`;
+  tabs.style.cssText = `display: flex; gap: 6px; border-bottom: 1px solid #e5e7eb; margin-bottom: 14px; flex-wrap: wrap;`;
   const tabJson = document.createElement('button');
+  const tabText = document.createElement('button');
+  const tabPdf = document.createElement('button');
   const tabCards = document.createElement('button');
   const tabStyle = `
     background: none; border: none; padding: 10px 14px; cursor: pointer;
     font-size: 0.95rem; font-weight: 600; color: #6b7280; border-bottom: 2px solid transparent;
   `;
   tabJson.textContent = 'JSON';
+  tabText.textContent = 'Text';
+  tabPdf.textContent = 'PDF';
   tabCards.textContent = 'Story Cards';
-  tabJson.style.cssText = tabStyle;
-  tabCards.style.cssText = tabStyle;
+  for (const tab of [tabJson, tabText, tabPdf, tabCards]) tab.style.cssText = tabStyle;
   tabs.appendChild(tabJson);
+  tabs.appendChild(tabText);
+  tabs.appendChild(tabPdf);
   tabs.appendChild(tabCards);
   modal.appendChild(tabs);
 
@@ -457,21 +466,42 @@ function showExportUI(data: ExportPayload) {
   content.style.cssText = `flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;`;
   modal.appendChild(content);
 
-  const setActiveTab = (which: 'json' | 'cards') => {
-    [tabJson, tabCards].forEach((t) => {
+  type TabKey = 'json' | 'text' | 'pdf' | 'cards';
+  const tabsByKey: Record<TabKey, HTMLButtonElement> = {
+    json: tabJson,
+    text: tabText,
+    pdf: tabPdf,
+    cards: tabCards,
+  };
+
+  const setActiveTab = (which: TabKey) => {
+    for (const t of Object.values(tabsByKey)) {
       t.style.color = '#6b7280';
       t.style.borderBottomColor = 'transparent';
-    });
-    const active = which === 'json' ? tabJson : tabCards;
+    }
+    const active = tabsByKey[which];
     active.style.color = '#6366f1';
     active.style.borderBottomColor = '#6366f1';
     content.innerHTML = '';
-    if (which === 'json') content.appendChild(renderJsonPane(data));
-    else content.appendChild(renderCardsPane(data));
+    switch (which) {
+      case 'json':
+        content.appendChild(renderJsonPane(data));
+        break;
+      case 'text':
+        content.appendChild(renderTextPane(data));
+        break;
+      case 'pdf':
+        content.appendChild(renderPdfPane(data));
+        break;
+      case 'cards':
+        content.appendChild(renderCardsPane(data));
+        break;
+    }
   };
 
-  tabJson.onclick = () => setActiveTab('json');
-  tabCards.onclick = () => setActiveTab('cards');
+  for (const [key, btn] of Object.entries(tabsByKey)) {
+    btn.onclick = () => setActiveTab(key as TabKey);
+  }
   // Default tab depends on whether we have character metadata to show.
   setActiveTab(data.characterMeta || data.adventureMeta ? 'cards' : 'json');
 
@@ -533,6 +563,134 @@ function renderJsonPane(data: ExportPayload) {
   footer.appendChild(copyBtn);
   footer.appendChild(downloadBtn);
   wrap.appendChild(footer);
+  return wrap;
+}
+
+/**
+ * Build the "Text" tab: live-rendered preview of the plain-text export
+ * with Copy and Download .txt buttons. The format is the same one
+ * `renderTextExport` produces for the file download, so what the user
+ * sees is exactly what gets saved.
+ */
+function renderTextPane(data: ExportPayload) {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = `display: flex; flex-direction: column; min-height: 0; flex: 1;`;
+
+  const text = renderTextExport(data);
+
+  const pre = document.createElement('pre');
+  pre.style.cssText = `
+    background: #f9fafb; padding: 14px; border-radius: 8px; overflow: auto; flex: 1;
+    font-size: 0.82rem; border: 1px solid #e5e7eb; margin: 0 0 14px; white-space: pre-wrap;
+    word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    max-height: 50vh; line-height: 1.45; color: #1f2937;
+  `;
+  pre.textContent = text;
+  wrap.appendChild(pre);
+
+  const footer = document.createElement('div');
+  footer.style.cssText = `display: flex; gap: 10px; justify-content: flex-end;`;
+
+  const copyBtn = document.createElement('button');
+  copyBtn.textContent = 'Copy Text';
+  copyBtn.style.cssText = primaryBtnStyle('#6366f1');
+  copyBtn.onclick = () => {
+    navigator.clipboard.writeText(text);
+    copyBtn.textContent = 'Copied!';
+    setTimeout(() => (copyBtn.textContent = 'Copy Text'), 2000);
+  };
+
+  const downloadBtn = document.createElement('button');
+  downloadBtn.textContent = 'Download .txt';
+  downloadBtn.style.cssText = primaryBtnStyle('#10b981');
+  downloadBtn.onclick = () => {
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const slug = sanitize(
+      data.characterMeta?.name || data.adventureMeta?.title || 'export'
+    );
+    triggerBlobDownload(blob, `${getSite()}-${slug}-${Date.now()}.txt`);
+  };
+
+  footer.appendChild(copyBtn);
+  footer.appendChild(downloadBtn);
+  wrap.appendChild(footer);
+  return wrap;
+}
+
+/**
+ * Build the "PDF" tab: a short description of the document layout
+ * plus a single Download .pdf button. PDFs aren't usefully previewed
+ * inside the modal (an iframe of a generated blob URL works but
+ * jumps the page on Chrome and adds bundle weight), so we keep this
+ * pane minimal and let the user open the saved file.
+ *
+ * Generation uses jsPDF and is synchronous-on-render, so the click
+ * handler can build the blob inline without spinner choreography.
+ */
+function renderPdfPane(data: ExportPayload) {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = `display: flex; flex-direction: column; min-height: 0; flex: 1; gap: 14px;`;
+
+  const summary = document.createElement('div');
+  summary.style.cssText = `
+    background: #f9fafb; padding: 18px; border-radius: 8px; border: 1px solid #e5e7eb;
+    color: #374151; font-size: 0.92rem; line-height: 1.5;
+  `;
+  const messageCount = data.messages.length;
+  const characterLine = data.characterMeta
+    ? `Character profile (${data.characterMeta.name})`
+    : null;
+  const adventureLine = data.adventureMeta
+    ? `Adventure metadata (${data.adventureMeta.title}${data.adventureMeta.storyCards?.length ? `, ${data.adventureMeta.storyCards.length} story cards` : ''})`
+    : null;
+  const items = [
+    'Title and source URL',
+    characterLine,
+    adventureLine,
+    `${messageCount} message${messageCount === 1 ? '' : 's'}, role-tinted, selectable text`,
+  ].filter(Boolean) as string[];
+  summary.innerHTML = `
+    <strong style="display: block; margin-bottom: 8px; color: #111827; font-size: 1rem;">PDF document</strong>
+    A multi-page PDF with selectable text. Includes:
+    <ul style="margin: 8px 0 0; padding-left: 20px;">
+      ${items.map((it) => `<li style="margin-bottom: 4px;">${it}</li>`).join('')}
+    </ul>
+  `;
+  wrap.appendChild(summary);
+
+  const footer = document.createElement('div');
+  footer.style.cssText = `display: flex; gap: 10px; justify-content: flex-end; align-items: center;`;
+  const status = document.createElement('span');
+  status.style.cssText = `font-size: 0.8rem; color: #6b7280; margin-right: auto;`;
+  footer.appendChild(status);
+
+  const downloadBtn = document.createElement('button');
+  downloadBtn.textContent = 'Download .pdf';
+  downloadBtn.style.cssText = primaryBtnStyle('#dc2626');
+  downloadBtn.onclick = () => {
+    const original = downloadBtn.textContent;
+    downloadBtn.disabled = true;
+    downloadBtn.style.opacity = '0.7';
+    status.textContent = 'Building PDF…';
+    try {
+      const blob = renderPdfExport(data);
+      const slug = sanitize(
+        data.characterMeta?.name || data.adventureMeta?.title || 'export'
+      );
+      triggerBlobDownload(blob, `${getSite()}-${slug}-${Date.now()}.pdf`);
+      status.textContent = 'Downloaded.';
+    } catch (err) {
+      console.error('PDF export failed', err);
+      status.textContent = 'PDF export failed — check console.';
+    } finally {
+      downloadBtn.disabled = false;
+      downloadBtn.style.opacity = '1';
+      downloadBtn.textContent = original!;
+    }
+  };
+  footer.appendChild(downloadBtn);
+  wrap.appendChild(footer);
+
   return wrap;
 }
 
