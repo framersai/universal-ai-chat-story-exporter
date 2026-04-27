@@ -667,13 +667,17 @@ function renderPdfPane(data: ExportPayload) {
   const downloadBtn = document.createElement('button');
   downloadBtn.textContent = 'Download .pdf';
   downloadBtn.style.cssText = primaryBtnStyle('#dc2626');
-  downloadBtn.onclick = () => {
+  downloadBtn.onclick = async () => {
     const original = downloadBtn.textContent;
     downloadBtn.disabled = true;
     downloadBtn.style.opacity = '0.7';
     status.textContent = 'Building PDF…';
     try {
-      const blob = renderPdfExport(data);
+      // renderPdfExport is async since v0.4.0 — it best-effort
+      // fetches the character avatar / adventure cover image and
+      // embeds it as a hero at the top of the PDF. Image fetch
+      // failure is non-fatal (text-only fallback).
+      const blob = await renderPdfExport(data);
       const slug = sanitize(
         data.characterMeta?.name || data.adventureMeta?.title || 'export'
       );

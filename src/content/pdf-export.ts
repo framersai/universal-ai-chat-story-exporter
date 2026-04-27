@@ -49,6 +49,56 @@ const ROLE_COLORS: Record<string, [number, number, number]> = {
   ASSISTANT: [217, 70, 239],
 };
 
+/** Avatar (square portrait) draw box — Character.AI / Janitor. */
+const AVATAR_BOX = 120;
+/** Adventure cover banner box — AI Dungeon. */
+const BANNER_MAX_WIDTH = 480;
+const BANNER_MAX_HEIGHT = 160;
+
+/**
+ * Fetch a remote image URL and return its body as a data URL plus a
+ * jspdf-friendly format hint, or `null` on any failure (CORS, 404,
+ * unsupported mime, network). Treats failure as a non-event: the
+ * caller falls back to the text-only PDF path.
+ *
+ * Uses `credentials: 'omit'` because every URL we'd hero-embed
+ * (character avatars on public CDNs, AI Dungeon cover art on
+ * `files.aidungeon.com`) is publicly accessible and we don't want
+ * to leak the user's session into a CDN's logs.
+ */
+async function fetchImageAsDataUrl(url: string): Promise<
+  { dataUrl: string; format: 'PNG' | 'JPEG' } | null
+> {
+  if (!url || !/^https?:\/\//.test(url)) return null;
+  try {
+    const res = await fetch(url, { credentials: 'omit' });
+    if (!res.ok) return null;
+    const contentType = (res.headers.get('content-type') || '').toLowerCase();
+    let format: 'PNG' | 'JPEG' | null = null;
+    if (contentType.includes('png')) format = 'PNG';
+    else if (contentType.includes('jpeg') || contentType.includes('jpg')) format = 'JPEG';
+    else if (contentType.includes('webp')) {
+      // jspdf builds since 2.5 accept webp via the JPEG path on
+      // most browsers. Try it; if it errors during addImage the
+      // outer catch in `renderPdfExport` swallows it and the PDF
+      // ships text-only.
+      format = 'JPEG';
+    }
+    if (!format) return null;
+    const blob = await res.blob();
+    const dataUrl = await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+    if (!dataUrl) return null;
+    return { dataUrl, format };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * State shared across the layout helpers — the doc, the current
  * vertical cursor (`y`), and cached page geometry. Wrapped in a
@@ -296,13 +346,80 @@ function drawConversation(
   }
 }
 
-/** Build the PDF and return it as a Blob ready for download. */
-export function renderPdfExport(data: PdfExportInput): Blob {
+/**
+ * Draw a hero image at the top of the document.
+ *
+ *  - `kind: 'avatar'` centers a square portrait of fixed
+ *    {@link AVATAR_BOX} side. Used for Character.AI / Janitor
+ *    character avatars.
+ *  - `kind: 'banner'` centers a wide image clamped to
+ *    {@link BANNER_MAX_WIDTH} × {@link BANNER_MAX_HEIGHT}, scaled
+ *    proportionally. Used for AI Dungeon adventure cover art.
+ *
+ * Both paths advance the cursor by the drawn height plus a section
+ * gap so subsequent `drawTitle` lands cleanly below the hero. Any
+ * `addImage` exception (corrupt blob, unsupported codec) is
+ * swallowed and the PDF falls through to the text-only path.
+ */
+function drawHero(
+  ctx: LayoutCtx,
+  dataUrl: string,
+  format: 'PNG' | 'JPEG',
+  kind: 'avatar' | 'banner'
+) {
+  let drawWidth: number;
+  let drawHeight: number;
+  if (kind === 'avatar') {
+    drawWidth = AVATAR_BOX;
+    drawHeight = AVATAR_BOX;
+  } else {
+    drawWidth = BANNER_MAX_WIDTH;
+    drawHeight = BANNER_MAX_HEIGHT;
+  }
+  // Clamp to the page's content width minus margins so a 480pt
+  // banner doesn't bleed past the edge on letter-size paper.
+  if (drawWidth > ctx.contentWidth) {
+    const scale = ctx.contentWidth / drawWidth;
+    drawWidth = ctx.contentWidth;
+    drawHeight = drawHeight * scale;
+  }
+  const x = PAGE_MARGIN + (ctx.contentWidth - drawWidth) / 2;
+  ensureSpace(ctx, drawHeight + SECTION_GAP);
+  try {
+    ctx.doc.addImage(dataUrl, format, x, ctx.y, drawWidth, drawHeight);
+    advance(ctx, drawHeight + SECTION_GAP);
+  } catch {
+    /* fall through to text-only */
+  }
+}
+
+/**
+ * Build the PDF and return it as a Blob ready for download.
+ *
+ * Asynchronous so the renderer can fetch + embed a hero image
+ * (character avatar or adventure cover) when one is available.
+ * Image fetch failure is non-fatal — the PDF still ships with
+ * the rest of the content.
+ */
+export async function renderPdfExport(data: PdfExportInput): Promise<Blob> {
   const ctx = makeCtx();
   const title =
     data.characterMeta?.name ||
     data.adventureMeta?.title ||
     'Wilds AI Export';
+
+  // Hero image (best-effort): character avatar or adventure cover.
+  // Drawn before the title so the visual hierarchy reads
+  //   [hero image] → [title] → [metadata] → [conversation].
+  const heroUrl =
+    data.characterMeta?.avatarUrl || data.adventureMeta?.image || '';
+  const heroKind: 'avatar' | 'banner' = data.adventureMeta ? 'banner' : 'avatar';
+  if (heroUrl) {
+    const fetched = await fetchImageAsDataUrl(heroUrl);
+    if (fetched) {
+      drawHero(ctx, fetched.dataUrl, fetched.format, heroKind);
+    }
+  }
 
   drawTitle(ctx, title);
   drawMetaLine(ctx, 'Platform', data.site ?? 'unknown');
