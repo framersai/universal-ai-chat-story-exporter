@@ -88,11 +88,14 @@ Install [Wilds AI Exporter](https://chromewebstore.google.com/detail/wilds-ai-un
 ```bash
 git clone https://github.com/framersai/universal-ai-chat-story-exporter.git
 cd universal-ai-chat-story-exporter
-npm install
-npm run build
+pnpm install
+pnpm run build           # Chrome build → dist/
+pnpm run build:firefox   # Chrome + Firefox builds → dist/ and dist-firefox/
 ```
 
-Then open `chrome://extensions/`, enable **Developer mode**, click **Load unpacked**, and select the `dist/` folder.
+**Chrome / Edge / Brave / Arc / Opera:** open `chrome://extensions/`, enable **Developer mode**, click **Load unpacked**, and select the `dist/` folder.
+
+**Firefox (128+):** open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on…**, and select `dist-firefox/manifest.json`. After loading, click the puzzle-piece icon in the toolbar and grant the extension access to each supported site (Firefox MV3 makes host permissions opt-in by default).
 
 ## 🧑‍💻 How to Use
 
@@ -387,7 +390,7 @@ The exporter reads adventures at `play.aidungeon.com/adventure/<id>/.../play`. S
 
 ### Which browsers are supported?
 
-Chrome, Edge, Brave, Arc, Opera, and any other Chromium-based browser that supports Chrome extensions (MV3).
+Chrome, Edge, Brave, Arc, Opera, and any other Chromium-based browser that supports MV3. **Firefox 128+** is also supported via a separate build (`pnpm run build:firefox` → `dist-firefox/`).
 
 ### What about Character.AI images or voice?
 
@@ -404,9 +407,14 @@ No. Wilds AI Exporter is an independent tool made by the Wilds AI team. See the 
 ## 🛠 Development
 
 ```bash
-npm run dev     # Vite dev server for the popup
-npm run build   # Build for production (outputs to dist/)
+pnpm run dev             # Vite dev server for the popup
+pnpm run build           # Production build for Chromium browsers → dist/
+pnpm run build:firefox   # Production build for Chromium + Firefox → dist/ and dist-firefox/
 ```
+
+The Firefox build is forked from the Chrome build by `scripts/build-firefox.mjs`. The only difference is the `background` block: Chrome MV3 requires `service_worker`, while Firefox stable still rejects service-worker backgrounds and requires `scripts` (event page). Everything else — content scripts, host permissions, `world: "MAIN"` injection — is identical between the two zips. Firefox-specific keys (`browser_specific_settings.gecko`) are kept in the source manifest because Chrome ignores unknown top-level keys.
+
+Reload the extension in `chrome://extensions/` (Chrome) or `about:debugging` (Firefox) after every rebuild.
 
 Contributions welcome — open an issue or PR on GitHub.
 
