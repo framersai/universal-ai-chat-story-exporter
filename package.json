@@ -2,6 +2,7 @@
   "name": "wilds-ai-universal-exporter",
   "version": "0.7.0",
   "description": "Wilds AI: Universal AI Chat & Story Exporter",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",

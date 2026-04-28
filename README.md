@@ -13,7 +13,7 @@ ai, export ai conversations, ai chat to png, story cards, wilds ai exporter.
 
 [![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-Install-4285F4?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/wilds-ai-universal-ai-cha/nblmojeghhciehfmjondiechgchfdfea)
 [![Version](https://img.shields.io/badge/version-0.7.0-blue)](./public/manifest.json)
-[![License](https://img.shields.io/badge/license-All%20rights%20reserved-lightgrey)](#-license)
+[![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Made by Wilds AI](https://img.shields.io/badge/Made%20by-Wilds%20AI-6366f1)](https://wilds.ai)
 
 <p align="center">
@@ -424,7 +424,9 @@ Wilds AI builds tools for the AI roleplay, interactive fiction, and AI-assisted 
 
 ## 📄 License
 
-&copy; 2026 [Wilds AI](https://wilds.ai). All rights reserved.
+[MIT License](./LICENSE) &copy; 2026 [Wilds AI](https://wilds.ai).
+
+You can use, modify, and redistribute this code freely. If you ship a fork, please don't pretend it's the official Wilds AI Exporter.
 
 ---
 
