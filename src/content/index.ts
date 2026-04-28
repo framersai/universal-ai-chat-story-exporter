@@ -763,18 +763,31 @@ function renderCardsPane(data: ExportPayload) {
  * scales down to `targetW` CSS pixels. Using a scaled iframe (rather than a
  * small iframe with responsive CSS) keeps the preview pixel-perfect with the
  * final html2canvas output.
+ *
+ * The iframe is wrapped in an explicitly-sized clipping div so it lays out as
+ * a `targetW × scaledH` box in any container — flex row, flex column, or
+ * normal flow. (An earlier version used negative margins on the iframe to
+ * compensate for `transform: scale()` not shrinking the layout box, but those
+ * margins caused overlapping cards in `flex-direction: column` on mobile.)
  */
-function makeScaledIframe(width: number, height: number, targetW: number) {
+function makeScaledIframe(width: number, height: number, targetW: number): {
+  wrapper: HTMLDivElement;
+  iframe: HTMLIFrameElement;
+} {
   const scale = targetW / width;
-  const f = document.createElement('iframe');
-  f.style.cssText = `
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = `
+    width: ${targetW}px; height: ${Math.round(height * scale)}px;
+    overflow: hidden; flex: 0 0 auto; background: transparent;
+  `;
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = `
     width: ${width}px; height: ${height}px; border: 0;
     transform: scale(${scale}); transform-origin: top left;
-    margin-right: ${-(width - width * scale)}px;
-    margin-bottom: ${-(height - height * scale)}px;
-    background: transparent;
+    background: transparent; display: block;
   `;
-  return f;
+  wrapper.appendChild(iframe);
+  return { wrapper, iframe };
 }
 
 /** Story Cards pane for character.ai: shows profile + first chat preview. */
@@ -791,25 +804,30 @@ function renderCharacterCardsPane(data: ExportPayload) {
   } chat ${totalCards - 1 === 1 ? 'card' : 'cards'} (2 messages each).`;
   wrap.appendChild(header);
 
+  const isNarrow = window.innerWidth < 640;
+  const cardTargetW = isNarrow ? Math.min(280, window.innerWidth - 80) : 300;
+
   const previewShell = document.createElement('div');
   previewShell.style.cssText = `
     flex: 1; min-height: 320px; max-height: 55vh; overflow: auto; border: 1px solid #e5e7eb;
-    border-radius: 10px; background: #0b1020; display: flex; justify-content: center;
-    gap: 20px; padding: 16px;
+    border-radius: 10px; background: #0b1020; display: flex;
+    flex-direction: ${isNarrow ? 'column' : 'row'};
+    justify-content: ${isNarrow ? 'flex-start' : 'center'};
+    align-items: center; gap: ${isNarrow ? '16px' : '20px'}; padding: 16px;
   `;
 
-  const profileFrame = makeScaledIframe(
+  const profile = makeScaledIframe(
     CHARACTER_PROFILE_CARD.width,
     CHARACTER_PROFILE_CARD.height,
-    300
+    cardTargetW
   );
-  const chatFrame = makeScaledIframe(
+  const chat = makeScaledIframe(
     CHARACTER_PROFILE_CARD.width,
     CHARACTER_PROFILE_CARD.height,
-    300
+    cardTargetW
   );
-  previewShell.appendChild(profileFrame);
-  previewShell.appendChild(chatFrame);
+  previewShell.appendChild(profile.wrapper);
+  previewShell.appendChild(chat.wrapper);
   wrap.appendChild(previewShell);
 
   const { footer, status } = makeFooter();
@@ -847,18 +865,18 @@ function renderCharacterCardsPane(data: ExportPayload) {
 
   buildProfilePreviewSrcDoc(data.characterMeta!)
     .then((html) => {
-      profileFrame.srcdoc = html;
+      profile.iframe.srcdoc = html;
     })
     .catch((err) => console.error('profile preview failed', err));
 
   buildChatPreviewSrcDoc(data.characterMeta!, data.messages as ChatMessage[])
     .then((html) => {
-      if (html) chatFrame.srcdoc = html;
-      else chatFrame.remove();
+      if (html) chat.iframe.srcdoc = html;
+      else chat.wrapper.remove();
     })
     .catch((err) => {
       console.error('chat preview failed', err);
-      chatFrame.remove();
+      chat.wrapper.remove();
     });
 
   return wrap;
@@ -894,30 +912,38 @@ function renderAdventureCardsPane(data: ExportPayload) {
 
   // Render both previews at a shared display height so they sit on the same
   // baseline even though one is landscape (chapter) and one is portrait (lore).
-  const PREVIEW_H = 260;
-  const chapterW = Math.round(
-    (ADVENTURE_STORY_CARD.width / ADVENTURE_STORY_CARD.height) * PREVIEW_H
-  );
+  // On narrow viewports drop the height so the chapter (landscape) card still
+  // fits the modal width without horizontal clipping.
+  const isNarrow = window.innerWidth < 640;
+  const chapterAspect = ADVENTURE_STORY_CARD.width / ADVENTURE_STORY_CARD.height;
+  const PREVIEW_H = isNarrow
+    ? Math.max(140, Math.floor((window.innerWidth - 80) / chapterAspect))
+    : 260;
+  const chapterW = Math.round(chapterAspect * PREVIEW_H);
   const loreW = Math.round(
     (ADVENTURE_LORE_CARD.width / ADVENTURE_LORE_CARD.height) * PREVIEW_H
   );
 
   const previewShell = document.createElement('div');
   previewShell.style.cssText = `
-    flex: 0 0 auto; min-height: ${PREVIEW_H + 32}px; overflow-x: auto; overflow-y: hidden;
+    flex: 0 0 auto; min-height: ${PREVIEW_H + 32}px;
+    overflow-x: ${isNarrow ? 'hidden' : 'auto'}; overflow-y: ${isNarrow ? 'auto' : 'hidden'};
     border: 1px solid #e5e7eb; border-radius: 10px; background: #0b0714;
-    display: flex; justify-content: ${loreCount > 0 ? 'flex-start' : 'center'};
+    display: flex;
+    flex-direction: ${isNarrow ? 'column' : 'row'};
+    justify-content: ${
+      isNarrow ? 'flex-start' : loreCount > 0 ? 'flex-start' : 'center'
+    };
     align-items: center; gap: 16px; padding: 16px;
   `;
-  const adventureFrame = makeScaledIframe(
+  const adventure = makeScaledIframe(
     ADVENTURE_STORY_CARD.width,
     ADVENTURE_STORY_CARD.height,
     chapterW
   );
-  adventureFrame.style.flex = '0 0 auto';
-  previewShell.appendChild(adventureFrame);
+  previewShell.appendChild(adventure.wrapper);
 
-  const loreFrame =
+  const lore =
     loreCount > 0
       ? makeScaledIframe(
           ADVENTURE_LORE_CARD.width,
@@ -925,10 +951,7 @@ function renderAdventureCardsPane(data: ExportPayload) {
           loreW
         )
       : null;
-  if (loreFrame) {
-    loreFrame.style.flex = '0 0 auto';
-    previewShell.appendChild(loreFrame);
-  }
+  if (lore) previewShell.appendChild(lore.wrapper);
   wrap.appendChild(previewShell);
 
   const { footer, status } = makeFooter();
@@ -969,23 +992,23 @@ function renderAdventureCardsPane(data: ExportPayload) {
 
   buildAdventurePreviewSrcDoc(data.adventureMeta!, data.messages as ChatMessage[])
     .then((html) => {
-      if (html) adventureFrame.srcdoc = html;
-      else adventureFrame.remove();
+      if (html) adventure.iframe.srcdoc = html;
+      else adventure.wrapper.remove();
     })
     .catch((err) => {
       console.error('adventure preview failed', err);
-      adventureFrame.remove();
+      adventure.wrapper.remove();
     });
 
-  if (loreFrame) {
+  if (lore) {
     buildAdventureLorePreviewSrcDoc(data.adventureMeta!)
       .then((html) => {
-        if (html) loreFrame.srcdoc = html;
-        else loreFrame.remove();
+        if (html) lore.iframe.srcdoc = html;
+        else lore.wrapper.remove();
       })
       .catch((err) => {
         console.error('adventure lore preview failed', err);
-        loreFrame.remove();
+        lore.wrapper.remove();
       });
   }
 
