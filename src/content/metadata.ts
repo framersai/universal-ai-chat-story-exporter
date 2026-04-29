@@ -786,3 +786,253 @@ export function buildJanitorMessages(payload: {
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// Chai AI
+// ---------------------------------------------------------------------------
+
+/**
+ * One message entry as returned by `/api/conversations/:id`.
+ *
+ * `msg_0` is the bot's scenario / persona setup (sent under the bot's name)
+ * — not a user-typed line. We treat it as the bot's first turn so the export
+ * matches what the user sees in the Chai UI.
+ */
+export interface ChaiRawMessage {
+  message_id: string;
+  sender: string;
+  content: string;
+  status?: string;
+  created_at?: string;
+}
+
+/** Combined output of a Chai conversation extraction. */
+export interface ChaiConversation {
+  meta: CharacterMeta;
+  messages: AdventureMessage[];
+}
+
+/**
+ * Read the Firebase auth access token from the page's IndexedDB.
+ *
+ * Firebase Auth stores its session in `firebaseLocalStorageDb` → object
+ * store `firebaseLocalStorage` → key `firebase:authUser:<api_key>:[DEFAULT]`
+ * → `value.stsTokenManager.accessToken`. The token expires hourly; the Chai
+ * web client refreshes it on demand, so reading whatever is currently
+ * persisted is sufficient for an export.
+ *
+ * Returns null on any error or when no Firebase user record is present
+ * (logged-out user).
+ */
+function readChaiAccessTokenFromIDB(): Promise<string | null> {
+  return new Promise((resolve) => {
+    let req: IDBOpenDBRequest;
+    try {
+      req = indexedDB.open('firebaseLocalStorageDb');
+    } catch {
+      resolve(null);
+      return;
+    }
+    req.onerror = () => resolve(null);
+    req.onsuccess = () => {
+      const db = req.result;
+      try {
+        const tx = db.transaction('firebaseLocalStorage', 'readonly');
+        const store = tx.objectStore('firebaseLocalStorage');
+        const all = store.getAll();
+        all.onerror = () => {
+          db.close();
+          resolve(null);
+        };
+        all.onsuccess = () => {
+          db.close();
+          const rows: any[] = Array.isArray(all.result) ? all.result : [];
+          for (const row of rows) {
+            const key = typeof row?.fbase_key === 'string' ? row.fbase_key : '';
+            if (!key.startsWith('firebase:authUser:')) continue;
+            const token = row?.value?.stsTokenManager?.accessToken;
+            if (typeof token === 'string' && token) {
+              resolve(token);
+              return;
+            }
+          }
+          resolve(null);
+        };
+      } catch {
+        db.close();
+        resolve(null);
+      }
+    };
+  });
+}
+
+/**
+ * Chai conversation URLs follow `/chat/:conversation_id`. The id format is
+ * `<firebase_uid>__<bot_uid>_<timestamp>` but we treat it as opaque here.
+ */
+function getChaiConversationId(): string | null {
+  const m = window.location.pathname.match(/^\/chat\/([^/?#]+)/);
+  return m ? m[1] : null;
+}
+
+/**
+ * Dispatch the conversation fetch to the background service worker, which
+ * holds the `host_permissions` for chai-ai.com. Returns the raw response
+ * object or null on failure.
+ */
+function fetchChaiConversationViaBackground(
+  conversationId: string,
+  accessToken: string
+): Promise<Record<string, unknown> | null> {
+  return new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage(
+        { action: 'FETCH_CHAI_CONVERSATION', conversationId, accessToken },
+        (response) => {
+          if (chrome.runtime.lastError || !response?.success) {
+            resolve(null);
+            return;
+          }
+          const conv = response.data;
+          resolve(conv && typeof conv === 'object' ? conv : null);
+        }
+      );
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+/**
+ * Find the bot's avatar URL in the live chat DOM.
+ *
+ * Chai renders the avatar with `alt="<bot_name>"` and serves it from
+ * `secure-images.chai.ml` over HTTPS with proper CORS headers — unlike the
+ * API's `image_url`, which points at `http://images.chai.ml/...` and 301s
+ * to a host that doesn't return CORS. Scraping the DOM bypasses both
+ * problems.
+ */
+function findChaiAvatarFromDom(botName: string): string {
+  const target = botName.trim();
+  if (!target) return '';
+  const imgs = Array.from(
+    document.querySelectorAll<HTMLImageElement>('img[alt]')
+  );
+  for (const img of imgs) {
+    if ((img.alt || '').trim() !== target) continue;
+    const src = img.src || '';
+    if (src && /^https?:\/\//i.test(src)) return src;
+  }
+  return '';
+}
+
+/**
+ * Build a `CharacterMeta` from a Chai conversation payload.
+ *
+ * `msg_0` is the bot's scenario / persona setup. We promote its content to
+ * `description` so the profile card has something to show. Chai doesn't
+ * expose a separate greeting field — `msg_0` plays that role inside the
+ * messages array, so `greeting` is left empty.
+ */
+function buildChaiCharacterMeta(payload: any): CharacterMeta | null {
+  const botName = toStr(payload?.bot_name).trim();
+  // Prefer the DOM-rendered avatar (`secure-images.chai.ml`, HTTPS, CORS-ok)
+  // over the API's `image_url` which serves `http://images.chai.ml/...` and
+  // breaks both mixed-content checks and CORS preflights. Fall back to the
+  // API URL (https-upgraded) if the DOM lookup fails.
+  const apiAvatarUrl = toStr(payload?.image_url)
+    .trim()
+    .replace(/^http:\/\//i, 'https://');
+  const avatarUrl = findChaiAvatarFromDom(botName) || apiAvatarUrl;
+  if (!botName && !avatarUrl) return null;
+
+  const messages = Array.isArray(payload?.messages) ? payload.messages : [];
+  const scenario = messages.find(
+    (m: any) => toStr(m?.message_id) === 'msg_0'
+  );
+  const description = toStr(scenario?.content).trim();
+
+  const info: Record<string, unknown> = {
+    bot_uid: toStr(payload?.bot_uid),
+    conversation_id: toStr(payload?.conversation_id),
+    variants: Array.isArray(payload?.variants) ? payload.variants : [],
+  };
+
+  return {
+    name: botName || 'Chai Bot',
+    title: '',
+    creator: '',
+    description,
+    greeting: '',
+    definition: '',
+    upvotes: 0,
+    avatarUrl,
+    platform: 'Chai AI',
+    likes: 0,
+    interactions: 0,
+    info,
+  };
+}
+
+/**
+ * Map Chai's `messages` array onto our generic `AdventureMessage` shape.
+ *
+ * `msg_0` (the scenario/persona setup) is kept in the array as the bot's
+ * first turn — that's what the user actually sees in the Chai UI. Messages
+ * are sorted by the numeric suffix of `message_id` (msg_0, msg_1, …) with
+ * `created_at` as a tiebreaker for any ids that don't match the pattern.
+ */
+function buildChaiMessages(payload: any): AdventureMessage[] {
+  const messages = Array.isArray(payload?.messages) ? payload.messages : [];
+  const botName = toStr(payload?.bot_name).trim() || 'Character';
+
+  const sorted = [...messages].sort((a: any, b: any) => {
+    const ai = Number(String(a?.message_id || '').replace(/^msg_/, ''));
+    const bi = Number(String(b?.message_id || '').replace(/^msg_/, ''));
+    if (isFinite(ai) && isFinite(bi) && ai !== bi) return ai - bi;
+    return toStr(a?.created_at).localeCompare(toStr(b?.created_at));
+  });
+
+  const out: AdventureMessage[] = [];
+  for (const m of sorted) {
+    const text = toStr(m?.content);
+    if (!text.trim()) continue;
+    const status = toStr(m?.status);
+    if (status && status !== 'active') continue;
+    const sender = toStr(m?.sender).trim();
+    // Chai uses "You" verbatim for the user; everything else is the bot.
+    const isUser = sender === 'You';
+    out.push({
+      id: toStr(m?.message_id),
+      name: isUser ? 'You' : sender || botName,
+      role: isUser ? 'user' : 'character',
+      text,
+      createdAt: toStr(m?.created_at),
+    });
+  }
+  return out;
+}
+
+/**
+ * Pull the full Chai conversation via chai-ai.com's API.
+ *
+ * Returns null when the page URL doesn't match a conversation, when no
+ * Firebase auth token is present in IndexedDB (logged out), or when the
+ * request fails.
+ */
+export async function extractChaiConversation(): Promise<ChaiConversation | null> {
+  const conversationId = getChaiConversationId();
+  if (!conversationId) return null;
+
+  const token = await readChaiAccessTokenFromIDB();
+  if (!token) return null;
+
+  const payload = await fetchChaiConversationViaBackground(conversationId, token);
+  if (!payload) return null;
+
+  const meta = buildChaiCharacterMeta(payload);
+  if (!meta) return null;
+  const messages = buildChaiMessages(payload);
+
+  return { meta, messages };
+}

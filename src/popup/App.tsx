@@ -50,7 +50,7 @@ const App: React.FC = () => {
       </header>
       <main>
         <p className="info-text">
-          Open a Character.ai chat and click the button below to extract your messages.
+          Open a chat on Character.AI, AI Dungeon, Janitor AI, or Chai AI and click below to extract your messages.
         </p>
         
         <button className="export-btn" onClick={handleExport}>

@@ -18,6 +18,7 @@ import {
   buildJanitorMessages,
   extractAIDungeonAdventure,
   extractAdventureMetaAIDungeon,
+  extractChaiConversation,
   extractCharacterMetaCharacterAI,
   type AdventureMessage,
   type AdventureMeta,
@@ -47,7 +48,7 @@ console.log('Wilds AI Exporter: Content script loaded');
 const LOGO_URL = chrome.runtime.getURL('wilds-logo.svg');
 
 /** Supported host shorthand used throughout the content script. */
-type Site = 'character' | 'aidungeon' | 'janitor' | null;
+type Site = 'character' | 'aidungeon' | 'janitor' | 'chai' | null;
 
 /** Identify the current host; returns `null` if we're on an unknown site. */
 function getSite(): Site {
@@ -55,6 +56,7 @@ function getSite(): Site {
   if (host.includes('character.ai')) return 'character';
   if (host.includes('aidungeon.com')) return 'aidungeon';
   if (host.includes('janitorai.com')) return 'janitor';
+  if (host.includes('chai-ai.com')) return 'chai';
   return null;
 }
 
@@ -77,6 +79,10 @@ function isChatPage() {
 
   if (site === 'janitor') {
     return /^\/chats\/[a-zA-Z0-9-]+$/.test(path);
+  }
+
+  if (site === 'chai') {
+    return /^\/chat\/[a-zA-Z0-9_-]+$/.test(path);
   }
 
   return false;
@@ -348,6 +354,18 @@ async function collectExportData(): Promise<{
       messages: Array.from(cache.messages.values()),
     });
     return { messages, characterMeta, adventureMeta: null };
+  }
+
+  if (site === 'chai') {
+    const chai = await extractChaiConversation();
+    if (!chai) {
+      return { messages: [], characterMeta: null, adventureMeta: null };
+    }
+    return {
+      messages: chai.messages,
+      characterMeta: chai.meta,
+      adventureMeta: null,
+    };
   }
 
   return { messages: [], characterMeta: null, adventureMeta: null };
@@ -1148,9 +1166,11 @@ function handleUIVisibility() {
   // actually painted so the button doesn't briefly flash on an empty shell.
   // Janitor renders its chat through a virtualized component without a stable
   // id we can latch onto; the URL pattern alone is enough since the network
-  // monitor is already running by the time the user can interact.
+  // monitor is already running by the time the user can interact. Chai pulls
+  // its transcript over the API at click time, so the URL pattern is all we
+  // need there too.
   const hasMessages =
-    site === 'janitor'
+    site === 'janitor' || site === 'chai'
       ? true
       : !!(
           document.getElementById('chat-messages') ||

@@ -13,6 +13,7 @@
  *  - `FETCH_IMAGE`               — cross-origin image → data URL.
  *  - `FETCH_CHARACTER_INFO`      — character.ai `get_character_info` API call.
  *  - `FETCH_AIDUNGEON_ADVENTURE` — AI Dungeon GraphQL adventure fetch.
+ *  - `FETCH_CHAI_CONVERSATION`   — Chai AI conversation fetch (Bearer auth).
  *  - `DOWNLOAD_DATA`             — serialize JSON and trigger a file download.
  *
  * Every handler replies with `{ success: true, ... }` or `{ success: false, error }`.
@@ -269,6 +270,34 @@ async function fetchAIDungeonAdventure(
 }
 
 /**
+ * GET a Chai AI conversation by id.
+ *
+ * Auth is a short-lived Firebase JWT read from page IndexedDB by the content
+ * script and forwarded here as the bare token (no scheme prefix). We add the
+ * `Bearer ` prefix on the wire ourselves to match what Chai's web client
+ * sends. `credentials: 'omit'` keeps the request anonymous beyond the bearer
+ * token — Chai's API authenticates via the header, not cookies.
+ */
+async function fetchChaiConversation(
+  conversationId: string,
+  accessToken: string
+): Promise<any> {
+  const url = `https://www.chai-ai.com/api/conversations/${encodeURIComponent(
+    conversationId
+  )}`;
+  const res = await fetch(url, {
+    method: 'GET',
+    credentials: 'omit',
+    headers: {
+      accept: 'application/json',
+      authorization: `Bearer ${accessToken}`,
+    },
+  });
+  if (!res.ok) throw new Error(`chai conversation -> ${res.status}`);
+  return res.json();
+}
+
+/**
  * Main message dispatcher.
  *
  * Each handler returns `true` to tell Chrome the reply will be sent
@@ -304,6 +333,19 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     typeof request.accessToken === 'string'
   ) {
     fetchAIDungeonAdventure(request.shortId, request.accessToken)
+      .then((data) => sendResponse({ success: true, data }))
+      .catch((err) =>
+        sendResponse({ success: false, error: String(err?.message || err) })
+      );
+    return true; // async response
+  }
+
+  if (
+    request?.action === 'FETCH_CHAI_CONVERSATION' &&
+    typeof request.conversationId === 'string' &&
+    typeof request.accessToken === 'string'
+  ) {
+    fetchChaiConversation(request.conversationId, request.accessToken)
       .then((data) => sendResponse({ success: true, data }))
       .catch((err) =>
         sendResponse({ success: false, error: String(err?.message || err) })

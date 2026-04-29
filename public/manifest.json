@@ -10,7 +10,9 @@
     "https://play.aidungeon.com/*",
     "https://api.aidungeon.com/*",
     "https://janitorai.com/*",
-    "https://*.janitorai.com/*"
+    "https://*.janitorai.com/*",
+    "https://*.chai-ai.com/*",
+    "https://*.chai.ml/*"
   ],
   "icons": {
     "16": "wilds-logo.png",
@@ -31,7 +33,8 @@
       "matches": [
         "https://*.character.ai/*",
         "https://play.aidungeon.com/*",
-        "https://janitorai.com/*"
+        "https://janitorai.com/*",
+        "https://*.chai-ai.com/*"
       ],
       "js": ["content.js"]
     },
@@ -52,7 +55,8 @@
       "matches": [
         "https://*.character.ai/*",
         "https://play.aidungeon.com/*",
-        "https://janitorai.com/*"
+        "https://janitorai.com/*",
+        "https://*.chai-ai.com/*"
       ]
     }
   ],

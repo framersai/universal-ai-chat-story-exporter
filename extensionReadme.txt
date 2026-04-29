@@ -1,13 +1,13 @@
 SHORT DESCRIPTION (132-char field)
 ==================================
 
-Export Character.AI, AI Dungeon & Janitor AI chats as JSON, PDF, text, or PNG story cards. Free, private, one-click, local.
+Export Character.AI, AI Dungeon, Janitor AI & Chai AI chats as JSON, PDF, text, or PNG story cards. Free, private, one-click.
 
 
 LONG DESCRIPTION
 ================
 
-Back up and export Character.AI chats, AI Dungeon adventures, and Janitor AI conversations as JSON, PDF, plain text, or shareable PNG story cards. Free, private, one-click — runs entirely in your browser. No account, no servers, no tracking.
+Back up and export Character.AI chats, AI Dungeon adventures, Janitor AI conversations, and Chai AI bot chats as JSON, PDF, plain text, or shareable PNG story cards. Free, private, one-click — runs entirely in your browser. No account, no servers, no tracking.
 
 Built for roleplayers, writers, and researchers who want a permanent local copy of their AI chats before a platform update, content policy change, or persona switch makes them disappear.
 
@@ -15,7 +15,7 @@ Built for roleplayers, writers, and researchers who want a permanent local copy 
 • One-click export — a floating button appears on any chat or adventure page.
 • Four output formats — JSON for archives, plain text for readability, PDF for printing or sharing, and a ZIP of PNG story cards for social media.
 • Beautiful story cards — character profile + paired message cards, plus AI Dungeon world-info / lore cards, all bundled into a single zip.
-• Rich metadata — name, description, greeting, creator, likes, interactions (Character.AI); memory, author's note, tags, story cards / world-info entries (AI Dungeon); alternate greetings, persona info, NSFW flags, chat metadata (Janitor AI).
+• Rich metadata — name, description, greeting, creator, likes, interactions (Character.AI); memory, author's note, tags, story cards / world-info entries (AI Dungeon); alternate greetings, persona info, NSFW flags, chat metadata (Janitor AI); bot name, avatar, scenario / persona setup, and alternate response variants (Chai AI).
 • Instant in-page preview — review the JSON, plain text, or rendered PNG cards before you save.
 • 100% local — zero analytics, zero servers, zero data leaves your machine.
 • Open source — full source on GitHub. Audit exactly what it does.
@@ -24,9 +24,10 @@ Built for roleplayers, writers, and researchers who want a permanent local copy 
 • Character.AI (character.ai) — full chat history + character profile (name, description, greeting, definition, avatar, likes, interactions, upvotes, creator).
 • AI Dungeon (play.aidungeon.com) — full adventure (actions + AI narration), memory, author's note, story cards / world-info lore entries, tags, cover image, author profile.
 • Janitor AI (janitorai.com) — full chat thread + character profile, alternate greetings, attached personas (name, appearance, pronouns), NSFW flags, chat metadata.
+• Chai AI (chai-ai.com) — full conversation thread + bot name and avatar, scenario / persona setup, every user and bot turn in order, and any alternate bot reply variants.
 
 ▶ HOW TO USE
-1. Open a chat on Character.AI, an adventure on AI Dungeon, or a chat on Janitor AI (janitorai.com/chats/:id).
+1. Open a chat on Character.AI, an adventure on AI Dungeon, a chat on Janitor AI (janitorai.com/chats/:id), or a conversation on Chai AI (chai-ai.com/chat/:id).
 2. Click the "Export Chat" or "Export Adventure" button in the bottom-right corner.
 3. Preview your export, then pick a format:
    • Copy JSON to clipboard or download as a .json file.
@@ -38,8 +39,9 @@ Built for roleplayers, writers, and researchers who want a permanent local copy 
 • Character.AI users archiving favorite bots before content policy updates.
 • AI Dungeon writers backing up long-running adventures with full memory and lore.
 • Janitor AI users saving chats across persona switches and alternate greetings.
+• Chai AI users keeping conversations before they age out of history.
 • Researchers and educators documenting AI-assisted creative work for citation.
-• Anyone migrating between Character.AI, AI Dungeon, and Janitor AI.
+• Anyone migrating between Character.AI, AI Dungeon, Janitor AI, and Chai AI.
 
 ▶ FAQ
 
@@ -51,6 +53,9 @@ Open the adventure on play.aidungeon.com and click "Export Adventure". You get t
 
 How do I save a Janitor AI chat?
 Open any chat at janitorai.com/chats/:id and click "Export Chat". The export includes the character profile, all messages, alternate greetings, and every persona attached to the chat.
+
+How do I save a Chai AI chat?
+Open any conversation at chai-ai.com/chat/:id and click "Export Chat". The export includes the bot name and avatar, the scenario / persona setup (msg_0), every user and bot turn, and any alternate response variants. You need to be signed in.
 
 Does it upload my chats anywhere?
 No. All extraction and rendering runs locally in your browser. Your conversations never touch a Wilds AI server.
@@ -73,4 +78,4 @@ Source & docs: https://github.com/framersai/universal-ai-chat-story-exporter
 
 Made by the Wilds AI team for the AI roleplay, interactive fiction, and AI-assisted writing community.
 
-Disclaimer: Wilds AI Exporter is an independent tool and is not affiliated with, endorsed by, or sponsored by Character.AI, AI Dungeon, Latitude Games, Janitor AI, or any of their affiliates.
+Disclaimer: Wilds AI Exporter is an independent tool and is not affiliated with, endorsed by, or sponsored by Character.AI, AI Dungeon, Latitude Games, Janitor AI, Chai Research, or any of their affiliates.
